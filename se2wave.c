@@ -249,7 +249,7 @@ PetscErrorCode TabulateBasis1d_CLEGENDRE(PetscInt npoints,PetscReal xi[],PetscIn
     PetscReal cond;
     PetscBool compute_vandermonde_condition = PETSC_FALSE;
     
-    PetscOptionsGetBool(NULL,NULL,"-compute_vandermonde_condition",&compute_vandermonde_condition,0);
+    ierr = PetscOptionsGetBool(NULL,NULL,"-compute_vandermonde_condition",&compute_vandermonde_condition,NULL);CHKERRQ(ierr);
     if (compute_vandermonde_condition) {
       
       PetscPrintf(PETSC_COMM_WORLD,"Computing condition number of Vandermonde matrix\n");
@@ -383,7 +383,7 @@ PetscErrorCode TabulateBasisDerivatives1d_CLEGENDRE(PetscInt npoints,PetscReal x
     PetscReal cond;
     PetscBool compute_vandermonde_condition = PETSC_FALSE;
     
-    PetscOptionsGetBool(NULL,NULL,"-compute_vandermonde_condition",&compute_vandermonde_condition,0);
+    ierr = PetscOptionsGetBool(NULL,NULL,"-compute_vandermonde_condition",&compute_vandermonde_condition,NULL);CHKERRQ(ierr);
     if (compute_vandermonde_condition) {
       
       PetscPrintf(PETSC_COMM_WORLD,"Computing condition number of Vandermonde matrix\n");
@@ -1574,7 +1574,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_Kernel_CSpline(Spe
     
     printf("kernel_h = %1.4e <with pfac>\n",kernel_h);
   }
-  PetscOptionsGetReal(NULL,NULL,"-sm_h",&kernel_h,&flg);
+  ierr = PetscOptionsGetReal(NULL,NULL,"-sm_h",&kernel_h,&flg);CHKERRQ(ierr);
   if (flg) {
     printf("kernel_h = %1.4e <from options>\n",kernel_h);
   }
@@ -1836,7 +1836,7 @@ PetscErrorCode ElastoDynamicsSourceSetup(SpecFECtx ctx,PetscReal source_coor[],P
   PetscInt itype = -1;
   PetscBool found = PETSC_FALSE;
   
-  PetscOptionsGetInt(NULL,NULL,"-source_impl",&itype,&found);
+  ierr = PetscOptionsGetInt(NULL,NULL,"-source_impl",&itype,&found);CHKERRQ(ierr);
   if (found) {
     PetscPrintf(PETSC_COMM_WORLD,"  [source implementation]: processed from command line args\n");
     ierr = ElastoDynamicsSetSourceImplementation(ctx,itype);CHKERRQ(ierr);
@@ -2250,7 +2250,7 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
   
   ierr = SpecFECtxCreate(&ctx);CHKERRQ(ierr);
   p = 2;
-  PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);
+  ierr = PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);CHKERRQ(ierr);
   ierr = SpecFECtxCreateMesh(ctx,2,mx,my,PETSC_DECIDE,p,2);CHKERRQ(ierr);
 
   {
@@ -2303,20 +2303,20 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
   time = 0.0;
 
   time_max = 1.0;
-  PetscOptionsGetReal(NULL,NULL,"-tmax",&time_max,NULL);
+  ierr = PetscOptionsGetReal(NULL,NULL,"-tmax",&time_max,NULL);CHKERRQ(ierr);
 
   ierr = ElastoDynamicsComputeTimeStep_2d(ctx,&dt);CHKERRQ(ierr);
   dt = dt * 0.3;
-  PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);
+  ierr = PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);CHKERRQ(ierr);
 
   nt = 1000;
-  PetscOptionsGetInt(NULL,NULL,"-nt",&nt,NULL);
+  ierr = PetscOptionsGetInt(NULL,NULL,"-nt",&nt,NULL);CHKERRQ(ierr);
   
   of = 50;
-  PetscOptionsGetInt(NULL,NULL,"-of",&of,NULL);
+  ierr = PetscOptionsGetInt(NULL,NULL,"-of",&of,NULL);CHKERRQ(ierr);
   
   stf_exp_T = 0.1;
-  PetscOptionsGetReal(NULL,NULL,"-stf_exp_T",&stf_exp_T,NULL);
+  ierr = PetscOptionsGetReal(NULL,NULL,"-stf_exp_T",&stf_exp_T,NULL);CHKERRQ(ierr);
   
   
   /* Perform time stepping */
@@ -2429,7 +2429,7 @@ PetscErrorCode specfem_ex2(PetscInt mx,PetscInt my)
   
   ierr = SpecFECtxCreate(&ctx);CHKERRQ(ierr);
   p = 2;
-  PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);
+  ierr = PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);CHKERRQ(ierr);
   ierr = SpecFECtxCreateMesh(ctx,2,mx,my,PETSC_DECIDE,p,2);CHKERRQ(ierr);
   
   {
@@ -2477,20 +2477,20 @@ PetscErrorCode specfem_ex2(PetscInt mx,PetscInt my)
   time = 0.0;
   
   time_max = 4.0;
-  PetscOptionsGetReal(NULL,NULL,"-tmax",&time_max,NULL);
+  ierr = PetscOptionsGetReal(NULL,NULL,"-tmax",&time_max,NULL);CHKERRQ(ierr);
   
   ierr = ElastoDynamicsComputeTimeStep_2d(ctx,&dt);CHKERRQ(ierr);
   dt = dt * 0.2;
-  PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);
+  ierr = PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);CHKERRQ(ierr);
   
   nt = 10;
-  PetscOptionsGetInt(NULL,NULL,"-nt",&nt,NULL);
+  ierr = PetscOptionsGetInt(NULL,NULL,"-nt",&nt,NULL);CHKERRQ(ierr);
   
   of = 2;
-  PetscOptionsGetInt(NULL,NULL,"-of",&of,NULL);
+  ierr = PetscOptionsGetInt(NULL,NULL,"-of",&of,NULL);CHKERRQ(ierr);
   
   stf_exp_T = 0.1;
-  PetscOptionsGetReal(NULL,NULL,"-stf_exp_T",&stf_exp_T,NULL);
+  ierr = PetscOptionsGetReal(NULL,NULL,"-stf_exp_T",&stf_exp_T,NULL);CHKERRQ(ierr);
   
   /* Perform time stepping */
   for (k=1; k<=nt; k++) {
@@ -2594,7 +2594,7 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
   
   ierr = SpecFECtxCreate(&ctx);CHKERRQ(ierr);
   p = 2;
-  PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);
+  ierr = PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);CHKERRQ(ierr);
   ierr = SpecFECtxCreateMesh(ctx,2,mx,my,PETSC_DECIDE,p,2);CHKERRQ(ierr);
   
   {
@@ -2646,24 +2646,24 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
   time = 0.0;
   
   time_max = 0.6;
-  PetscOptionsGetReal(NULL,NULL,"-tmax",&time_max,NULL);
+  ierr = PetscOptionsGetReal(NULL,NULL,"-tmax",&time_max,NULL);CHKERRQ(ierr);
   PetscPrintf(PETSC_COMM_WORLD,"[spec2d] Requested time period: %1.4e\n",time_max);
   
   ierr = ElastoDynamicsComputeTimeStep_2d(ctx,&dt);CHKERRQ(ierr);
   dt = dt * 0.2;
-  PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);
+  ierr = PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);CHKERRQ(ierr);
   PetscPrintf(PETSC_COMM_WORLD,"[spec2d] Using time step size: %1.4e\n",dt);
   
   nt = 1000000;
   nt = (PetscInt)(time_max / dt ) + 4;
-  PetscOptionsGetInt(NULL,NULL,"-nt",&nt,NULL);
+  ierr = PetscOptionsGetInt(NULL,NULL,"-nt",&nt,NULL);CHKERRQ(ierr);
   PetscPrintf(PETSC_COMM_WORLD,"[spec2d] Estimated number of time steps: %D\n",nt);
   
   of = 5000;
-  PetscOptionsGetInt(NULL,NULL,"-of",&of,NULL);
+  ierr = PetscOptionsGetInt(NULL,NULL,"-of",&of,NULL);CHKERRQ(ierr);
   
   stf_exp_T = 0.1;
-  PetscOptionsGetReal(NULL,NULL,"-stf_exp_T",&stf_exp_T,NULL);
+  ierr = PetscOptionsGetReal(NULL,NULL,"-stf_exp_T",&stf_exp_T,NULL);CHKERRQ(ierr);
   
   /* Perform time stepping */
   for (k=1; k<=nt; k++) {
@@ -2783,7 +2783,7 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
   
   ierr = SpecFECtxCreate(&ctx);CHKERRQ(ierr);
   p = 2;
-  PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);
+  ierr = PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);CHKERRQ(ierr);
   ierr = SpecFECtxCreateMesh(ctx,2,mx,my,PETSC_DECIDE,p,2);CHKERRQ(ierr);
   
   {
@@ -2824,8 +2824,8 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
     PetscReal source_coor[] = { 0.0, 100.0 };
     PetscReal M;
     
-    PetscOptionsGetBool(NULL,NULL,"-p_source",&psource,NULL);
-    PetscOptionsGetBool(NULL,NULL,"-s_source",&ssource,NULL);
+    ierr = PetscOptionsGetBool(NULL,NULL,"-p_source",&psource,NULL);CHKERRQ(ierr);
+    ierr = PetscOptionsGetBool(NULL,NULL,"-s_source",&ssource,NULL);CHKERRQ(ierr);
     
     M = 1000.0; /* gar6more input usings M/rho = 1 */
     if (psource) {
@@ -2849,24 +2849,24 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
   time = 0.0;
   
   time_max = 0.4;
-  PetscOptionsGetReal(NULL,NULL,"-tmax",&time_max,NULL);
+  ierr = PetscOptionsGetReal(NULL,NULL,"-tmax",&time_max,NULL);CHKERRQ(ierr);
   PetscPrintf(PETSC_COMM_WORLD,"[spec2d] Requested time period: %1.4e\n",time_max);
   
   ierr = ElastoDynamicsComputeTimeStep_2d(ctx,&dt);CHKERRQ(ierr);
   dt = dt * 0.2;
-  PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);
+  ierr = PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);CHKERRQ(ierr);
   PetscPrintf(PETSC_COMM_WORLD,"[spec2d] Using time step size: %1.4e\n",dt);
   
   nt = 1000000;
   nt = (PetscInt)(time_max / dt ) + 4;
-  PetscOptionsGetInt(NULL,NULL,"-nt",&nt,NULL);
+  ierr = PetscOptionsGetInt(NULL,NULL,"-nt",&nt,NULL);CHKERRQ(ierr);
   PetscPrintf(PETSC_COMM_WORLD,"[spec2d] Estimated number of time steps: %D\n",nt);
   
   of = 5000;
-  PetscOptionsGetInt(NULL,NULL,"-of",&of,NULL);
+  ierr = PetscOptionsGetInt(NULL,NULL,"-of",&of,NULL);CHKERRQ(ierr);
   
   stf_exp_T = 0.1;
-  PetscOptionsGetReal(NULL,NULL,"-stf_exp_T",&stf_exp_T,NULL);
+  ierr = PetscOptionsGetReal(NULL,NULL,"-stf_exp_T",&stf_exp_T,NULL);CHKERRQ(ierr);
   
   /* Perform time stepping */
   for (k=1; k<=nt; k++) {
