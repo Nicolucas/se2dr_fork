@@ -2226,11 +2226,19 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL(SpecFECtx c,PetscReal time,
     ierr = VecGetArrayRead(coor,&LA_c);CHKERRQ(ierr);
     
     for (r=0; r<nr; r++) {
+      
+      if (xr[2*r+0] < gmin[0]) SETERRQ3(PETSC_COMM_SELF,PETSC_ERR_USER,"Receiver %D, x-coordinate (%+1.4e) < min(domain).x (%+1.4e)",r,xr[2*r+0],gmin[0]);
+      if (xr[2*r+1] < gmin[1]) SETERRQ3(PETSC_COMM_SELF,PETSC_ERR_USER,"Receiver %D, y-coordinate (%+1.4e) < min(domain).y (%+1.4e)",r,xr[2*r+1],gmin[1]);
+      if (xr[2*r+0] > gmax[0]) SETERRQ3(PETSC_COMM_SELF,PETSC_ERR_USER,"Receiver %D, x-coordinate (%+1.4e) > max(domain).x (%+1.4e)",r,xr[2*r+0],gmax[0]);
+      if (xr[2*r+1] > gmax[1]) SETERRQ3(PETSC_COMM_SELF,PETSC_ERR_USER,"Receiver %D, y-coordinate (%+1.4e) > max(domain).y (%+1.4e)",r,xr[2*r+1],gmax[1]);
+      
       dx = (gmax[0] - gmin[0])/((PetscReal)c->mx);
       ei = (xr[2*r+0] - gmin[0])/dx;
+      if (ei == c->mx) ei--;
       
       dy = (gmax[1] - gmin[1])/((PetscReal)c->my);
       ej = (xr[2*r+1] - gmin[1])/dy;
+      if (ej == c->my) ej--;
       
       eid = ei + ej * c->mx;
     
@@ -2311,6 +2319,11 @@ PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSou
   dx = (gmax[0] - gmin[0])/((PetscReal)c->mx);
   dy = (gmax[1] - gmin[1])/((PetscReal)c->my);
   
+  if (coor[0] < gmin[0]) SETERRQ2(PETSC_COMM_SELF,PETSC_ERR_USER,"Source x-coordinate (%+1.4e) < min(domain).x (%+1.4e)",coor[0],gmin[0]);
+  if (coor[1] < gmin[1]) SETERRQ2(PETSC_COMM_SELF,PETSC_ERR_USER,"Source y-coordinate (%+1.4e) < min(domain).y (%+1.4e)",coor[1],gmin[1]);
+  if (coor[0] > gmax[0]) SETERRQ2(PETSC_COMM_SELF,PETSC_ERR_USER,"Source x-coordinate (%+1.4e) > max(domain).x (%+1.4e)",coor[0],gmax[0]);
+  if (coor[1] > gmax[1]) SETERRQ2(PETSC_COMM_SELF,PETSC_ERR_USER,"Source y-coordinate (%+1.4e) > max(domain).y (%+1.4e)",coor[1],gmax[1]);
+
   source_found = PETSC_TRUE;
   eowner_source = -1;
   ii = -1;
