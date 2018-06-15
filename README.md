@@ -7,7 +7,7 @@
 ### How do I get set up? ###
 
 * Requires PETSc (`https://www.mcs.anl.gov/petsc`)
-* This particular version uses PETSc version 3.6. This can be downloaded from here `http://ftp.mcs.anl.gov/pub/petsc/release-snapshots/petsc-3.6.4.tar.gz`
+* Must be compiled with PETSc version 3.9. This can be downloaded from here `https://www.mcs.anl.gov/petsc/download`
 
 ### Who do I talk to? ###
 
