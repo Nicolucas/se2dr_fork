@@ -51,6 +51,51 @@ struct _p_SpecFECtx {
   PetscInt  source_implementation;
 };
 
+typedef struct _p_SeismicSource *SeismicSource;
+typedef struct _p_SeismicSTF *SeismicSTF;
+
+struct _p_SeismicSTF {
+  char name[PETSC_MAX_PATH_LEN];
+  void *data;
+  PetscErrorCode (*evaluate)(SeismicSTF,PetscReal,PetscReal *);
+  PetscErrorCode (*destroy)(SeismicSTF);
+};
+
+typedef enum { SOURCE_TYPE_FORCE = 0 , SOURCE_TYPE_MOMENT } SeismicSourceType;
+typedef enum { SOURCE_IMPL_POINTWISE = 0 , SOURCE_IMPL_NEAREST_QPOINT, SOURCE_IMPL_SPLINE, SOURCE_IMPL_DEFAULT } SeismicSourceImplementationType;
+
+struct _p_SeismicSource {
+  SpecFECtx sfem;
+  PetscReal coor[2],xi[2];
+  PetscInt  element_index,closest_gll;
+  PetscMPIInt rank;
+  SeismicSourceType type;
+  SeismicSourceImplementationType implementation_type;
+  PetscReal *values;
+  void *data;
+  PetscErrorCode (*setup)(SeismicSource);
+  PetscErrorCode (*add_values)(SeismicSource,PetscReal,Vec);
+  PetscErrorCode (*destroy)(SeismicSource);
+  PetscBool issetup;
+};
+
+typedef struct {
+  PetscReal xi[2];
+  PetscInt  nbasis;
+  PetscInt  *element_indices;
+  PetscReal *element_values;
+  PetscReal *buffer;
+} PointwiseContext;
+
+typedef struct {
+  Vec g;
+} SplineContext;
+
+/* prototypes */
+PetscErrorCode SeismicSourceSetup_Moment_Pointwise(SeismicSource s);
+PetscErrorCode SeismicSourceAddValues_Pointwise(SeismicSource s,PetscReal stf,Vec f);
+PetscErrorCode SeismicSourceDestroy_Pointwise(SeismicSource s);
+
 
 /* N = polynomial order */
 PetscErrorCode CreateGLLCoordsWeights(PetscInt N,PetscInt *_npoints,PetscReal **_xi,PetscReal **_w)
@@ -2242,6 +2287,482 @@ PetscErrorCode TSExplicitNewmarkFourth(Vec u,Vec v,Vec a,Vec Md,Vec f,PetscReal 
 }
 #endif
 
+PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSourceImplementationType itype,PetscReal coor[],PetscReal values[],SeismicSource *s)
+{
+  SeismicSource src;
+  PetscReal gmin[2],gmax[2],cell_min[2];
+  PetscReal dx,dy,xi_source[2];
+  PetscBool source_found;
+  PetscInt eowner_source;
+  PetscMPIInt rank;
+  PetscInt ii,jj;
+  PetscErrorCode ierr;
+  
+  ierr = MPI_Comm_rank(PETSC_COMM_WORLD,&rank);CHKERRQ(ierr);
+  /* locate cell containing source */
+  ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
+  dx = (gmax[0] - gmin[0])/((PetscReal)c->mx);
+  dy = (gmax[1] - gmin[1])/((PetscReal)c->my);
+  
+  source_found = PETSC_TRUE;
+  eowner_source = -1;
+  ii = -1;
+  jj = -1;
+  {
+    
+    ii = (PetscInt)( ( coor[0] - gmin[0] )/dx );
+    jj = (PetscInt)( ( coor[1] - gmin[1] )/dy );
+    
+    if (ii == c->mx) ii--;
+    if (jj == c->my) jj--;
+    
+    if (ii < 0) source_found = PETSC_FALSE;
+    if (jj < 0) source_found = PETSC_FALSE;
+    
+    if (ii > c->mx) source_found = PETSC_FALSE;
+    if (jj > c->my) source_found = PETSC_FALSE;
+    
+    if (source_found) {
+      eowner_source = ii + jj * c->mx;
+    }
+  }
+  if (source_found) {
+    printf("source (%+1.4e,%+1.4e) --> element %d | rank %d\n",coor[0],coor[1],eowner_source,rank);
+  } else {
+    printf("source (%+1.4e,%+1.4e) --> not mapped to rank %d\n",coor[0],coor[1],rank);
+    *s = NULL;
+    PetscFunctionReturn(0);
+  }
+  
+  /* get local coordinates */
+  cell_min[0] = gmin[0] + ii * dx;
+  cell_min[1] = gmin[1] + jj * dy;
+  
+  xi_source[0] = 2.0 * (coor[0] - cell_min[0])/dx - 1.0;
+  xi_source[1] = 2.0 * (coor[1] - cell_min[1])/dy - 1.0;
+  
+  if (PetscAbsReal(xi_source[0]) < 1.0e-12) xi_source[0] = 0.0;
+  if (PetscAbsReal(xi_source[1]) < 1.0e-12) xi_source[1] = 0.0;
+  
+  ierr = PetscMalloc1(1,&src);CHKERRQ(ierr);
+  ierr = PetscMemzero(src,sizeof(struct _p_SeismicSource));CHKERRQ(ierr);
+  
+  src->issetup = PETSC_FALSE;
+  src->sfem = c;
+  src->rank = rank;
+  src->element_index = eowner_source;
+  src->coor[0] = coor[0];
+  src->coor[1] = coor[1];
+  src->type = type;
+  src->implementation_type = itype;
+  if (itype == SOURCE_IMPL_DEFAULT) {
+    src->implementation_type = SOURCE_IMPL_NEAREST_QPOINT;
+  }
+  src->xi[0] = xi_source[0];
+  src->xi[1] = xi_source[1];
+  
+  /* locate closest quadrature point */
+  src->closest_gll = -1;
+  if (itype == SOURCE_IMPL_NEAREST_QPOINT) {
+    PetscReal sep2,sep2_min = PETSC_MAX_REAL;
+    PetscInt  e,i,min_qp = -1,ni,nj,_ni,_nj,closest_qp,nid;
+    PetscReal *elcoords;
+    const PetscInt *element,*elnidx;
+    PetscInt nbasis;
+    Vec coordinates;
+    const PetscReal *LA_coor;
+    
+    ierr = DMGetCoordinates(c->dm,&coordinates);CHKERRQ(ierr);
+    ierr = VecGetArrayRead(coordinates,&LA_coor);CHKERRQ(ierr);
+    
+    elcoords = c->elbuf_coor;
+    nbasis   = c->npe;
+    element  = (const PetscInt*)c->element;
+    
+    e = eowner_source;
+    
+    /* get element -> node map */
+    elnidx = (const PetscInt*)&element[nbasis*e];
+    
+    /* get element coordinates */
+    for (i=0; i<nbasis; i++) {
+      PetscInt nidx = elnidx[i];
+      elcoords[2*i  ] = LA_coor[2*nidx  ];
+      elcoords[2*i+1] = LA_coor[2*nidx+1];
+    }
+    
+    for (nj=1; nj<c->npe_1d-1; nj++) {
+      for (ni=1; ni<c->npe_1d-1; ni++) {
+        nid = ni + nj * c->npe_1d;
+        
+        sep2 = (elcoords[2*nid]-coor[0])*(elcoords[2*nid]-coor[0]) + (elcoords[2*nid+1]-coor[1])*(elcoords[2*nid+1]-coor[1]);
+        if (sep2 < sep2_min) {
+          sep2_min = sep2;
+          min_qp = nid;
+          _ni = ni;
+          _nj = nj;
+        }
+      }
+    }
+    ierr = VecRestoreArrayRead(coordinates,&LA_coor);CHKERRQ(ierr);
+    closest_qp = min_qp;
+    src->closest_gll = closest_qp;
+    printf("source --> closest_gll %d xi: (%+1.4e,%+1.4e) [%d,%d] \n",closest_qp,c->xi1d[_ni],c->xi1d[_nj],_ni,_nj);
+    printf("source --> closest_gll %d x:  (%+1.4e,%+1.4e)\n",closest_qp,elcoords[2*min_qp],elcoords[2*min_qp+1]);
+  }
+  
+  
+  switch (type) {
+    case SOURCE_TYPE_FORCE:
+    SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Source type \"force\" not supported");
+    ierr = PetscMalloc1(2,&src->values);CHKERRQ(ierr);
+    ierr = PetscMemzero(src->values,sizeof(PetscReal)*2);CHKERRQ(ierr);
+    ierr = PetscMemcpy(src->values,values,sizeof(PetscReal)*2);CHKERRQ(ierr);
+    break;
+    
+    case SOURCE_TYPE_MOMENT:
+    ierr = PetscMalloc1(4,&src->values);CHKERRQ(ierr);
+    ierr = PetscMemzero(src->values,sizeof(PetscReal)*4);CHKERRQ(ierr);
+    ierr = PetscMemcpy(src->values,values,sizeof(PetscReal)*4);CHKERRQ(ierr);
+    break;
+    
+    default:
+    break;
+  }
+  
+  
+  switch (src->implementation_type) {
+    
+    case SOURCE_IMPL_POINTWISE:
+    SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Source implementation type \"pointwise\" not supported");
+    if (type == SOURCE_TYPE_FORCE) {
+    } else if (type == SOURCE_TYPE_MOMENT) {
+      src->setup = SeismicSourceSetup_Moment_Pointwise;
+    }
+    src->add_values = SeismicSourceAddValues_Pointwise;
+    src->destroy    = SeismicSourceDestroy_Pointwise;
+    break;
+    
+    case SOURCE_IMPL_NEAREST_QPOINT:
+    if (type == SOURCE_TYPE_FORCE) {
+      SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Source implementation type \"pointwise\" for type \"force\" not supported");
+    } else if (type == SOURCE_TYPE_MOMENT) {
+      src->setup = SeismicSourceSetup_Moment_Pointwise;
+    }
+    src->add_values = SeismicSourceAddValues_Pointwise;
+    src->destroy    = SeismicSourceDestroy_Pointwise;
+    break;
+    
+    case SOURCE_IMPL_SPLINE:
+    SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Source implementation type \"spline\" not supported");
+    break;
+    
+    case SOURCE_IMPL_DEFAULT:
+    break;
+    
+    default:
+    break;
+  }
+  
+  *s = src;
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SeismicSourceSetup(SeismicSource src)
+{
+  PetscErrorCode ierr;
+  
+  if (src->issetup) PetscFunctionReturn(0);
+  if (src->setup) {
+    ierr = src->setup(src);CHKERRQ(ierr);
+    src->issetup = PETSC_TRUE;
+  }
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SeismicSourceDestroy(SeismicSource *src)
+{
+  PetscErrorCode ierr;
+  SeismicSource s;
+  
+  if (!src) PetscFunctionReturn(0);
+  s = *src;
+  if (!s) PetscFunctionReturn(0);
+  ierr = PetscFree(s->values);CHKERRQ(ierr);
+  if (s->destroy) {
+    ierr = s->destroy(s);CHKERRQ(ierr);
+  }
+  ierr = PetscFree(s);CHKERRQ(ierr);
+  *src = NULL;
+  
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SeismicSourceAddValues_Pointwise(SeismicSource s,PetscReal stf,Vec f)
+{
+  PetscErrorCode ierr;
+  PointwiseContext *pw = (PointwiseContext*)s->data;
+  PetscInt k;
+  
+  for (k=0; k<2*pw->nbasis; k++) {
+    pw->buffer[k] = stf * pw->element_values[k];
+  }
+  //for (k=0; k<pw->nbasis; k++) {
+  //  printf("buffer[%d] %+1.4e %+1.4e\n",k,pw->buffer[2*k],pw->buffer[2*k+1]);
+  //}
+  ierr = VecSetValues(f,pw->nbasis*2,pw->element_indices,pw->buffer,ADD_VALUES);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SeismicSourceDestroy_Pointwise(SeismicSource s)
+{
+  PointwiseContext *ctx;
+  PetscErrorCode ierr;
+  
+  ctx = (PointwiseContext*)s->data;
+  ierr = PetscFree(ctx->element_indices);CHKERRQ(ierr);
+  ierr = PetscFree(ctx->element_values);CHKERRQ(ierr);
+  ierr = PetscFree(ctx->buffer);CHKERRQ(ierr);
+  ierr = PetscFree(ctx);CHKERRQ(ierr);
+  s->data = NULL;
+  
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SeismicSourceSetup_Pointwise(SeismicSource s, PointwiseContext **pw)
+{
+  PointwiseContext *ctx;
+  PetscInt i;
+  Vec coordinates;
+  const PetscReal *LA_coor;
+  PetscInt e;
+  const PetscInt *elnidx;
+  PetscErrorCode ierr;
+  
+  if (s->issetup) {
+    *pw = (PointwiseContext*)s->data;
+    PetscFunctionReturn(0);
+  }
+  
+  ierr = PetscMalloc1(1,&ctx);CHKERRQ(ierr);
+  ierr = PetscMemzero(ctx,sizeof(PointwiseContext));CHKERRQ(ierr);
+  s->data = (void*)ctx;
+  
+  if (s->implementation_type == SOURCE_IMPL_NEAREST_QPOINT) {
+    PetscInt qi,qj;
+    
+    qj = s->closest_gll/s->sfem->npe_1d;
+    qi = s->closest_gll - qj * s->sfem->npe_1d;
+    
+    ctx->xi[0] = s->sfem->xi1d[qi];
+    ctx->xi[1] = s->sfem->xi1d[qj];
+  } else if (s->implementation_type == SOURCE_IMPL_POINTWISE) {
+    ctx->xi[0] = s->xi[0];
+    ctx->xi[1] = s->xi[1];
+  } else SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Only valid for SOURCE_IMPL_POINTWISE or SOURCE_IMPL_NEAREST_QPOINT");
+  
+  ctx->nbasis = s->sfem->npe;
+  ierr = PetscMalloc1(ctx->nbasis*2,&ctx->element_indices);CHKERRQ(ierr);
+  ierr = PetscMalloc1(ctx->nbasis*2,&ctx->element_values);CHKERRQ(ierr);
+  ierr = PetscMalloc1(ctx->nbasis*2,&ctx->buffer);CHKERRQ(ierr);
+  
+  ierr = PetscMemzero(ctx->element_indices,sizeof(PetscInt)*ctx->nbasis*2);CHKERRQ(ierr);
+  ierr = PetscMemzero(ctx->element_values,sizeof(PetscReal)*ctx->nbasis*2);CHKERRQ(ierr);
+  ierr = PetscMemzero(ctx->buffer,sizeof(PetscReal)*ctx->nbasis*2);CHKERRQ(ierr);
+  
+  e = s->element_index;
+  
+  /* get element -> node map */
+  elnidx = (const PetscInt*)&s->sfem->element[ctx->nbasis*e];
+  
+  /* generate dofs */
+  for (i=0; i<ctx->nbasis; i++) {
+    ctx->element_indices[2*i  ] = 2*elnidx[i];
+    ctx->element_indices[2*i+1] = 2*elnidx[i]+1;
+    //printf("src %d  %d\n",ctx->element_indices[2*i  ],ctx->element_indices[2*i+1]);
+  }
+  
+  *pw = ctx;
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SeismicSourceSetup_Moment_Pointwise(SeismicSource s)
+{
+  PointwiseContext *ctx;
+  PetscInt i;
+  PetscReal *moment_k;
+  PetscReal **dN_dxi,**dN_deta;
+  PetscReal *dN_dxi_q,*dN_deta_q;
+  PetscReal *dN_dx_q,*dN_dy_q;
+  Vec coordinates;
+  const PetscReal *LA_coor;
+  PetscReal *elcoords;
+  PetscErrorCode ierr;
+  
+  ierr = SeismicSourceSetup_Pointwise(s,&ctx);CHKERRQ(ierr);
+  
+  /* get element coordinates */
+  ierr = DMGetCoordinates(s->sfem->dm,&coordinates);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(coordinates,&LA_coor);CHKERRQ(ierr);
+  elcoords = s->sfem->elbuf_coor;
+  
+  for (i=0; i<2*ctx->nbasis; i++) {
+    PetscInt nidx = ctx->element_indices[i];
+    
+    elcoords[i] = LA_coor[nidx];
+  }
+  ierr = VecRestoreArrayRead(coordinates,&LA_coor);CHKERRQ(ierr);
+  
+  ierr = TabulateBasisDerivativesAtPointTensorProduct2d(ctx->xi,s->sfem->basisorder,&dN_dxi,&dN_deta);CHKERRQ(ierr);
+  
+  moment_k  = s->values;
+  dN_dxi_q  = dN_dxi[0];
+  dN_deta_q = dN_deta[0];
+  
+  /*
+   for (i=0; i<ctx->nbasis; i++) {
+   printf("GN_xi %d : %+1.12e\n",i,dN_dxi_q[i]);
+   }
+   for (i=0; i<ctx->nbasis; i++) {
+   printf("GN_eta %d : %+1.12e\n",i,dN_deta_q[i]);
+   }
+   */
+  
+  dN_dx_q   = s->sfem->dN_dx[0];
+  dN_dy_q   = s->sfem->dN_dy[0];
+  
+  ElementEvaluateDerivatives_CellWiseConstant2d(1,ctx->nbasis,elcoords,
+                                                s->sfem->npe_1d,&dN_dxi_q,&dN_deta_q,&dN_dx_q,&dN_dy_q);
+  
+  /* compute moment contribution @ source */
+  for (i=0; i<ctx->nbasis; i++) {
+    ctx->element_values[2*i  ] = (moment_k[0]*dN_dx_q[i] + moment_k[1]*dN_dy_q[i]);
+    ctx->element_values[2*i+1] = (moment_k[2]*dN_dx_q[i] + moment_k[3]*dN_dy_q[i]);
+  }
+  
+  for (i=0; i<1; i++) {
+    ierr = PetscFree(dN_dxi[i]);CHKERRQ(ierr);
+    ierr = PetscFree(dN_deta[i]);CHKERRQ(ierr);
+  }
+  ierr = PetscFree(dN_dxi);CHKERRQ(ierr);
+  ierr = PetscFree(dN_deta);CHKERRQ(ierr);
+  
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SeismicSTFCreate(const char name[],SeismicSTF *s)
+{
+  PetscErrorCode ierr;
+  SeismicSTF stf;
+  
+  ierr = PetscMalloc1(1,&stf);CHKERRQ(ierr);
+  ierr = PetscSNPrintf(stf->name,PETSC_MAX_PATH_LEN-1,"%s",name);CHKERRQ(ierr);
+  stf->data = NULL;
+  stf->evaluate = NULL;
+  stf->destroy = NULL;
+  *s = stf;
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SeismicSTFEvaluate(SeismicSTF stf,PetscReal time,PetscReal *value)
+{
+  PetscErrorCode ierr;
+  if (!stf->evaluate) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"A non-NULL source-time function evaluator must be provided");
+  ierr = stf->evaluate(stf,time,value);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SeismicSTFDestroy(SeismicSTF *s)
+{
+  PetscErrorCode ierr;
+  SeismicSTF stf;
+  
+  if (!s) PetscFunctionReturn(0);
+  stf = *s;
+  if (!stf) PetscFunctionReturn(0);
+  if (stf->destroy) {
+    ierr = stf->destroy(stf);CHKERRQ(ierr);
+  }
+  stf->data = NULL;
+  ierr = PetscFree(stf);CHKERRQ(ierr);
+  *s = NULL;
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SeismicSourceEvaluate(PetscReal time,PetscInt nsources,SeismicSource s[],SeismicSTF stf[],Vec f)
+{
+  PetscErrorCode ierr;
+  PetscInt p;
+  PetscReal value;
+  
+  ierr = VecZeroEntries(f);CHKERRQ(ierr);
+  for (p=0; p<nsources; p++) {
+    if (!s[p]->issetup) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_USER,"Seismic source not setup. Must call SeismicSourceSetup()");
+    
+    if (!stf) {
+      if (s[p]) {
+        value = 1.0;
+        ierr = s[p]->add_values(s[p],value,f);CHKERRQ(ierr);
+      }
+    } else {
+      if (stf[p] && s[p]) {
+        ierr = stf[p]->evaluate(stf[p],time,&value);CHKERRQ(ierr);
+        ierr = s[p]->add_values(s[p],value,f);CHKERRQ(ierr);
+      }
+    }
+  }
+  ierr = VecAssemblyBegin(f);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(f);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+typedef struct {
+  PetscReal t0,freq,amp;
+} SeismicSTF_Ricker;
+
+PetscErrorCode SeismicSTFEvaluate_Ricker(SeismicSTF stf,PetscReal time,PetscReal *psi)
+{
+  SeismicSTF_Ricker *ctx = (SeismicSTF_Ricker*)stf->data;
+  PetscReal arg,arg2,a,b;
+  
+  arg = PETSC_PI * ctx->freq * (time-ctx->t0);
+  arg2 = arg * arg;
+  a = 1.0 - 2.0 * arg2;
+  b = exp(-arg2);
+  *psi = ctx->amp * a * b;
+  
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SeismicSTFDestroy_Ricker(SeismicSTF stf)
+{
+  PetscErrorCode ierr;
+  SeismicSTF_Ricker *ctx = (SeismicSTF_Ricker*)stf->data;
+  
+  ierr = PetscFree(ctx);CHKERRQ(ierr);
+  stf->data = NULL;
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SeismicSTFCreate_Ricker(PetscReal t0,PetscReal freq,PetscReal amp,SeismicSTF *s)
+{
+  PetscErrorCode ierr;
+  SeismicSTF stf;
+  SeismicSTF_Ricker *ricker;
+  
+  ierr = SeismicSTFCreate("ricker",&stf);CHKERRQ(ierr);
+  ierr = PetscMalloc1(1,&ricker);CHKERRQ(ierr);
+  ricker->t0 = t0;
+  ricker->freq = freq;
+  ricker->amp = amp;
+  stf->data = (void*)ricker;
+  stf->evaluate = SeismicSTFEvaluate_Ricker;
+  stf->destroy = SeismicSTFDestroy_Ricker;
+  
+  *s = stf;
+  PetscFunctionReturn(0);
+}
+
 PetscErrorCode specfem(PetscInt mx,PetscInt my)
 {
   PetscErrorCode ierr;
@@ -2781,9 +3302,10 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
   PetscInt p,k,nt,of;
   PetscViewer viewer;
   Vec u,v,a,f,g,Md;
-  PetscReal time,dt,stf,time_max;
-  PetscReal stf_exp_T;
+  PetscReal time,dt,time_max;
   PetscBool psource=PETSC_TRUE,ssource=PETSC_FALSE;
+  SeismicSource src;
+  SeismicSTF stf;
   
   ierr = SpecFECtxCreate(&ctx);CHKERRQ(ierr);
   p = 2;
@@ -2822,7 +3344,9 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
   
   ierr = AssembleBilinearForm_Mass2d(ctx,Md);CHKERRQ(ierr);
   
-  ierr = ElastoDynamicsSetSourceImplementation(ctx,0);CHKERRQ(ierr);
+  ierr = ElastoDynamicsSetSourceImplementation(ctx,1);CHKERRQ(ierr);
+  
+  /* define a single source */
   {
     PetscReal moment[] = { 0.0, 0.0, 0.0, 0.0 };
     PetscReal source_coor[] = { 0.0, 100.0 };
@@ -2841,13 +3365,21 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
       moment[2] = M;
     }
     PetscPrintf(PETSC_COMM_WORLD,"Moment: [ %+1.2e , %+1.2e ; %+1.2e , %+1.2e ]\n",moment[0],moment[1],moment[2],moment[3]);
-    ierr = ElastoDynamicsSourceSetup(ctx,source_coor,moment,g);CHKERRQ(ierr);
+
+    ierr = SeismicSourceCreate(ctx,SOURCE_TYPE_MOMENT,SOURCE_IMPL_NEAREST_QPOINT,source_coor,moment,&src);CHKERRQ(ierr);
+    ierr = SeismicSourceSetup(src);CHKERRQ(ierr);
+    
+    /* dummy evaluation just for testing */
+    ierr = SeismicSourceEvaluate(0.0,1,&src,NULL,g);CHKERRQ(ierr);
   }
   
   //ierr = VecView(g,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
   ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,"f.vts",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
   ierr = VecView(g,viewer);CHKERRQ(ierr);
   ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+  
+  /* define a single source time function */
+  ierr = SeismicSTFCreate_Ricker(0.15,12.0,1.0,&stf);CHKERRQ(ierr);
   
   k = 0;
   time = 0.0;
@@ -2869,9 +3401,6 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
   of = 5000;
   ierr = PetscOptionsGetInt(NULL,NULL,"-of",&of,NULL);CHKERRQ(ierr);
   
-  stf_exp_T = 0.1;
-  ierr = PetscOptionsGetReal(NULL,NULL,"-stf_exp_T",&stf_exp_T,NULL);CHKERRQ(ierr);
-  
   /* Perform time stepping */
   for (k=1; k<=nt; k++) {
     
@@ -2884,21 +3413,13 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
     ierr = VecAXPY(v,0.5*dt,a);CHKERRQ(ierr); /* v' = v_{n} + 0.5.dt.a_{n} */
     
     /* Evaluate source time function, S(t_{n+1}) */
-    stf = 1.0;
-    {
-      PetscReal arg;
-      
-      // moment-time history
-      //ierr = EvaluateRickerWavelet(time,0.08,14.5,1.0,&stf);CHKERRQ(ierr);
-      ierr = EvaluateRickerWavelet(time,0.15,12.0,1.0,&stf);CHKERRQ(ierr);
-    }
-    //stf = time;
+    ierr = SeismicSourceEvaluate(time,1,&src,&stf,g);CHKERRQ(ierr);
     
     /* Compute f = -F^{int}( u_{n+1} ) */
     ierr = AssembleLinearForm_ElastoDynamics2d(ctx,u,f);CHKERRQ(ierr);
     
     /* Update force; F^{ext}_{n+1} = f + S(t_{n+1}) g(x) */
-    ierr = VecAXPY(f,stf,g);CHKERRQ(ierr);
+    ierr = VecAXPY(f,1.0,g);CHKERRQ(ierr);
     
     /* "Solve"; a_{n+1} = M^{-1} f */
     ierr = VecPointwiseDivide(a,f,Md);CHKERRQ(ierr);
@@ -2910,7 +3431,6 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
       PetscReal nrm,max,min;
       
       PetscPrintf(PETSC_COMM_WORLD,"[step %9D] time = %1.4e : dt = %1.4e \n",k,time,dt);
-      printf("  STF(%1.4e) = %+1.4e\n",time,stf);
       VecNorm(u,NORM_2,&nrm);
       VecMin(u,0,&min);
       VecMax(u,0,&max); PetscPrintf(PETSC_COMM_WORLD,"  [displacement] max = %+1.4e : min = %+1.4e : l2 = %+1.4e \n",max,min,nrm);
@@ -2943,7 +3463,6 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
     PetscReal nrm,max,min;
     
     PetscPrintf(PETSC_COMM_WORLD,"[step %9D] time = %1.4e : dt = %1.4e \n",k,time,dt);
-    printf("  STF(%1.4e) = %+1.4e\n",time,stf);
     VecNorm(u,NORM_2,&nrm);
     VecMin(u,0,&min);
     VecMax(u,0,&max); PetscPrintf(PETSC_COMM_WORLD,"  [displacement] max = %+1.4e : min = %+1.4e : l2 = %+1.4e \n",max,min,nrm);
@@ -2963,6 +3482,7 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
     ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
   }
   
+  ierr = SeismicSourceDestroy(&src);CHKERRQ(ierr);
   ierr = VecDestroy(&u);CHKERRQ(ierr);
   ierr = VecDestroy(&v);CHKERRQ(ierr);
   ierr = VecDestroy(&a);CHKERRQ(ierr);
