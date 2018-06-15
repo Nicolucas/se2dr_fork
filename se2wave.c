@@ -2201,6 +2201,99 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode RecordUVA_MultipleStations_NearestGLL(SpecFECtx c,PetscReal time,PetscInt nr,PetscReal xr[],Vec u,Vec v,Vec a)
+{
+  FILE             *fp;
+  const PetscReal  *LA_u,*LA_v,*LA_a;
+  static PetscBool beenhere = PETSC_FALSE;
+  static char      filename[PETSC_MAX_PATH_LEN];
+  static PetscInt  *nid_list = NULL;
+  PetscInt         r;
+  PetscErrorCode   ierr;
+
+  
+  if (!beenhere) {
+    const PetscReal *LA_c;
+    Vec coor;
+    PetscReal gmin[3],gmax[3],dx,dy,sep2min,sep2;
+    PetscInt ni,nj,ei,ej,n,nid,eid,*element,*elbasis;
+    
+    sprintf(filename,"closestqpsource-receiverCP-uva-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
+    ierr = PetscMalloc1(nr,&nid_list);CHKERRQ(ierr);
+    
+    ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
+    ierr = DMGetCoordinates(c->dm,&coor);CHKERRQ(ierr);
+    ierr = VecGetArrayRead(coor,&LA_c);CHKERRQ(ierr);
+    
+    for (r=0; r<nr; r++) {
+      dx = (gmax[0] - gmin[0])/((PetscReal)c->mx);
+      ei = (xr[2*r+0] - gmin[0])/dx;
+      
+      dy = (gmax[1] - gmin[1])/((PetscReal)c->my);
+      ej = (xr[2*r+1] - gmin[1])/dy;
+      
+      eid = ei + ej * c->mx;
+    
+      /* get element -> node map */
+      element = c->element;
+      elbasis = &element[c->npe*eid];
+    
+      // find closest //
+      sep2min = 1.0e32;
+      nid = -1;
+      for (n=0; n<c->npe; n++) {
+        sep2  = (xr[2*r+0]-LA_c[2*elbasis[n]])*(xr[2*r+0]-LA_c[2*elbasis[n]]);
+        sep2 += (xr[2*r+1]-LA_c[2*elbasis[n]+1])*(xr[2*r+1]-LA_c[2*elbasis[n]+1]);
+        if (sep2 < sep2min) {
+          nid = elbasis[n];
+          sep2min = sep2;
+        }
+      }
+      nid_list[r] = nid;
+    }
+  
+    fp = fopen(filename,"w");
+    fprintf(fp,"# SpecFECtx meta data\n");
+    fprintf(fp,"#   mx %d : my %d : basis order %d\n",c->mx,c->my,c->basisorder);
+    fprintf(fp,"# Reciever meta data\n");
+    fprintf(fp,"#   + number reciever locations: %d\n",nr);
+    fprintf(fp,"#   + takes displ/velo/accel from basis nearest to requested reciever location\n");
+    for (r=0; r<nr; r++) {
+      fprintf(fp,"#   + receiver location [%d]: x,y %+1.8e %+1.8e\n",r,xr[2*r+0],xr[2*r+1]);
+      fprintf(fp,"#   +   mapped to nearest node --> %+1.8e %+1.8e\n",LA_c[2*nid_list[r]],LA_c[2*nid_list[r]+1]);
+    }
+    fprintf(fp,"# Time series header <field>(<column index>)\n");
+    fprintf(fp,"#   time(1)\n");
+    for (r=0; r<nr; r++) {
+      PetscInt offset = 1 + r*6; /* 1 is for time */
+      
+      fprintf(fp,"#     ux(%d) uy(%d) vx(%d) vy(%d) ax(%d) ay(%d) -> station [%d]\n",offset+1,offset+2,offset+3,offset+4,offset+5,offset+6,r);
+    }
+    ierr = VecRestoreArrayRead(coor,&LA_c);CHKERRQ(ierr);
+    beenhere = PETSC_TRUE;
+  } else {
+    fp = fopen(filename,"a");
+  }
+  
+  ierr = VecGetArrayRead(u,&LA_u);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(v,&LA_v);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(a,&LA_a);CHKERRQ(ierr);
+  
+  fprintf(fp,"%1.4e",time);
+  for (r=0; r<nr; r++) {
+    fprintf(fp," %+1.8e %+1.8e %+1.8e %+1.8e %+1.8e %+1.8e",LA_u[2*nid_list[r]],LA_u[2*nid_list[r]+1],LA_v[2*nid_list[r]],LA_v[2*nid_list[r]+1],LA_a[2*nid_list[r]],LA_a[2*nid_list[r]+1]);
+  }
+  fprintf(fp,"\n");
+  
+  ierr = VecRestoreArrayRead(a,&LA_a);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(v,&LA_v);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(u,&LA_u);CHKERRQ(ierr);
+  
+  fclose(fp);
+  
+  PetscFunctionReturn(0);
+}
+
 /*
  INTERNATIONAL JOURNAL FOR NUMERICAL METHODS IN ENGINEERING
  Int. J. Numer. Meth. Engng. 45, 1139–1164 (1999)
@@ -3439,10 +3532,13 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
       VecMax(v,0,&max); PetscPrintf(PETSC_COMM_WORLD,"  [velocity]     max = %+1.4e : min = %+1.4e : l2 = %+1.4e \n",max,min,nrm);
     }
     {
-      //PetscReal xr[] = { 10.0, 10.0 };
       PetscReal xr[] = { 100.0, 200.0 };
+      PetscReal xr_list[] = { 100.0, 200.0, 150.0, 200.0 };
+      
       ierr = RecordUV(ctx,time,xr,u,v);CHKERRQ(ierr);
       ierr = RecordUV_interp(ctx,time,xr,u,v);CHKERRQ(ierr);
+
+      ierr = RecordUVA_MultipleStations_NearestGLL(ctx,time,2,xr_list,u,v,a);CHKERRQ(ierr);
     }
     
     if (k%of == 0) {
