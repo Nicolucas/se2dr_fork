@@ -927,8 +927,8 @@ PetscErrorCode SpecFECtxGetLocalBoundingBox(SpecFECtx c,PetscReal gmin[],PetscRe
   jj = si[1];
   gmin[0] = LA_coor[2*(ii + jj*m)+0];
   gmin[1] = LA_coor[2*(ii + jj*m)+1];
-  ii = si[0] + c->mx * c->basisorder + 1;
-  jj = si[1] + c->my * c->basisorder + 1;
+  ii = si[0] + c->mx * c->basisorder;
+  jj = si[1] + c->my * c->basisorder;
   gmax[0] = LA_coor[2*(ii + jj*m)+0];
   gmax[1] = LA_coor[2*(ii + jj*m)+1];
   ierr = VecRestoreArrayRead(coor,&LA_coor);CHKERRQ(ierr);
@@ -2590,11 +2590,12 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_SEQ(SpecFECtx c,PetscReal t
 
 PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal time,PetscInt nr,PetscReal xr[],Vec u,Vec v,Vec a)
 {
-  FILE             *fp;
+  FILE             *fp = NULL;
   const PetscReal  *LA_u,*LA_v,*LA_a;
   static PetscBool beenhere = PETSC_FALSE;
   static char      filename[PETSC_MAX_PATH_LEN];
   static PetscInt  *nid_list = NULL;
+  static PetscInt  nr_local = 0;
   PetscInt         r;
   Vec              lu,lv,la;
   PetscErrorCode   ierr;
@@ -2626,8 +2627,8 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
       
       if (xr[2*r+0] < gmin_domain[0]) continue;
       if (xr[2*r+1] < gmin_domain[1]) continue;
-      if (xr[2*r+0] > gmin_domain[0]) continue;
-      if (xr[2*r+1] > gmin_domain[1]) continue;
+      if (xr[2*r+0] > gmax_domain[0]) continue;
+      if (xr[2*r+1] > gmax_domain[1]) continue;
       
       dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
       ei = (xr[2*r+0] - gmin_domain[0])/dx;
@@ -2662,6 +2663,7 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
         }
       }
       nid_list[r] = nid;
+      nr_local++;
     }
     
     fp = fopen(filename,"w");
@@ -2669,31 +2671,42 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
     fprintf(fp,"#   mx %d : my %d : basis order %d\n",c->mx,c->my,c->basisorder);
     fprintf(fp,"# Reciever meta data\n");
     fprintf(fp,"#   + number reciever locations: %d\n",nr);
+    fprintf(fp,"#   + number reciever locations <local>: %d\n",nr_local);
     fprintf(fp,"#   + takes displ/velo/accel from basis nearest to requested reciever location\n");
     for (r=0; r<nr; r++) {
       if (nid_list[r] == -1) { continue; }
       fprintf(fp,"#   + receiver location [%d]: x,y %+1.8e %+1.8e\n",r,xr[2*r+0],xr[2*r+1]);
       fprintf(fp,"#   +   mapped to nearest node --> %+1.8e %+1.8e\n",LA_c[2*nid_list[r]],LA_c[2*nid_list[r]+1]);
     }
-    fprintf(fp,"# Time series header <field>(<column index>)\n");
-    fprintf(fp,"#   time(1)\n");
 
-    PetscInt count = 0;
+    if (nr_local != 0) {
+      PetscInt count = 0;
+
+      fprintf(fp,"# Time series header <field>(<column index>)\n");
+      fprintf(fp,"#   time(1)\n");
+
     
-    for (r=0; r<nr; r++) {
-      PetscInt offset;
-      
-      if (nid_list[r] == -1) { continue; }
+      for (r=0; r<nr; r++) {
+        PetscInt offset;
+        
+        if (nid_list[r] == -1) { continue; }
 
-      offset = 1 + count*6; /* 1 is for time */
-      
-      fprintf(fp,"#     ux(%d) uy(%d) vx(%d) vy(%d) ax(%d) ay(%d) -> station [%d]\n",offset+1,offset+2,offset+3,offset+4,offset+5,offset+6,r);
-      count++;
+        offset = 1 + count*6; /* 1 is for time */
+        
+        fprintf(fp,"#     ux(%d) uy(%d) vx(%d) vy(%d) ax(%d) ay(%d) -> station [%d]\n",offset+1,offset+2,offset+3,offset+4,offset+5,offset+6,r);
+        count++;
+      }
+    } else {
+      fprintf(fp,"# <note> No receivers found on this sub-domain\n");
+      fprintf(fp,"# <note> This file will remain empty\n");
     }
+    
     ierr = VecRestoreArrayRead(coor,&LA_c);CHKERRQ(ierr);
     beenhere = PETSC_TRUE;
   } else {
-    fp = fopen(filename,"a");
+    if (nr_local != 0) {
+      fp = fopen(filename,"a");
+    }
   }
   
   ierr = DMGetLocalVector(c->dm,&lu);CHKERRQ(ierr);
@@ -2711,12 +2724,14 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
   ierr = VecGetArrayRead(lv,&LA_v);CHKERRQ(ierr);
   ierr = VecGetArrayRead(la,&LA_a);CHKERRQ(ierr);
   
-  fprintf(fp,"%1.4e",time);
-  for (r=0; r<nr; r++) {
-    if (nid_list[r] == -1) { continue; }
-    fprintf(fp," %+1.8e %+1.8e %+1.8e %+1.8e %+1.8e %+1.8e",LA_u[2*nid_list[r]],LA_u[2*nid_list[r]+1],LA_v[2*nid_list[r]],LA_v[2*nid_list[r]+1],LA_a[2*nid_list[r]],LA_a[2*nid_list[r]+1]);
+  if (nr_local != 0) {
+    fprintf(fp,"%1.4e",time);
+    for (r=0; r<nr; r++) {
+      if (nid_list[r] == -1) { continue; }
+      fprintf(fp," %+1.8e %+1.8e %+1.8e %+1.8e %+1.8e %+1.8e",LA_u[2*nid_list[r]],LA_u[2*nid_list[r]+1],LA_v[2*nid_list[r]],LA_v[2*nid_list[r]+1],LA_a[2*nid_list[r]],LA_a[2*nid_list[r]+1]);
+    }
+    fprintf(fp,"\n");
   }
-  fprintf(fp,"\n");
   
   ierr = VecRestoreArrayRead(a,&LA_a);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(v,&LA_v);CHKERRQ(ierr);
@@ -2726,7 +2741,7 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
   ierr = DMRestoreLocalVector(c->dm,&lv);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(c->dm,&lu);CHKERRQ(ierr);
 
-  fclose(fp);
+  if (fp) fclose(fp);
   
   PetscFunctionReturn(0);
 }
@@ -2766,7 +2781,8 @@ PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSou
   if (coor[1] > gmax[1]) SETERRQ2(PETSC_COMM_SELF,PETSC_ERR_USER,"Source y-coordinate (%+1.4e) > max(domain).y (%+1.4e)",coor[1],gmax[1]);
 
   ierr = SpecFECtxGetLocalBoundingBox(c,gmin_domain,gmax_domain);CHKERRQ(ierr);
-
+  printf("rank %d : x[%+1.4e,%+1.4e] - y[%+1.4e,%+1.4e]\n",c->rank,gmin_domain[0],gmax_domain[0],gmin_domain[1],gmax_domain[1]);
+  
   source_found = PETSC_TRUE;
   eowner_source = -1;
   ii = -1;
@@ -2774,13 +2790,14 @@ PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSou
   
   if (coor[0] < gmin_domain[0]) source_found = PETSC_FALSE;
   if (coor[1] < gmin_domain[1]) source_found = PETSC_FALSE;
-  if (coor[0] > gmin_domain[0]) source_found = PETSC_FALSE;
-  if (coor[1] > gmin_domain[1]) source_found = PETSC_FALSE;
+  if (coor[0] > gmax_domain[0]) source_found = PETSC_FALSE;
+  if (coor[1] > gmax_domain[1]) source_found = PETSC_FALSE;
   
-  if (source_found == PETSC_FALSE) { /* skip if already determined point is outside of the sub-domain */
+  if (source_found != PETSC_FALSE) { /* skip if already determined point is outside of the sub-domain */
     
     ii = (PetscInt)( ( coor[0] - gmin_domain[0] )/dx );
     jj = (PetscInt)( ( coor[1] - gmin_domain[1] )/dy );
+    printf("  rank %d ii jj %d %d \n",c->rank,ii,jj);
     
     if (ii == c->mx) ii--;
     if (jj == c->my) jj--;
@@ -4230,7 +4247,7 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
     /*
       Write out the u,v,a values at each receiver
     */
-    //ierr = RecordUVA_MultipleStations_NearestGLL(ctx,time,nrecv,xr_list,u,v,a);CHKERRQ(ierr);
+    ierr = RecordUVA_MultipleStations_NearestGLL(ctx,time,nrecv,xr_list,u,v,a);CHKERRQ(ierr);
     
     if (k%of == 0) {
       char name[PETSC_MAX_PATH_LEN];
