@@ -59,15 +59,16 @@ PetscErrorCode CreateGLLCoordsWeights(PetscInt N,PetscInt *_npoints,PetscReal **
   PetscReal *xold,*x,*w,*P;
   PetscReal eps,res;
   PetscInt i,j,k;
+  PetscErrorCode ierr;
   
   
   // Truncation + 1
   N1 = N + 1;
 
-  PetscMalloc(sizeof(PetscReal)*N1,&xold);
-  PetscMalloc(sizeof(PetscReal)*N1,&x);
-  PetscMalloc(sizeof(PetscReal)*N1,&w);
-  PetscMalloc(sizeof(PetscReal)*N1*N1,&P);
+  ierr = PetscMalloc(sizeof(PetscReal)*N1,&xold);CHKERRQ(ierr);
+  ierr = PetscMalloc(sizeof(PetscReal)*N1,&x);CHKERRQ(ierr);
+  ierr = PetscMalloc(sizeof(PetscReal)*N1,&w);CHKERRQ(ierr);
+  ierr = PetscMalloc(sizeof(PetscReal)*N1*N1,&P);CHKERRQ(ierr);
   
   // Use the Chebyshev-Gauss-Lobatto nodes as the first guess
   for (i=0; i<N1; i++) {
@@ -143,7 +144,7 @@ PetscErrorCode CreateGLLCoordsWeights(PetscInt N,PetscInt *_npoints,PetscReal **
     }
     *_xi = x;
   } else {
-    PetscFree(x);
+    ierr = PetscFree(x);CHKERRQ(ierr);
   }
 
   if (_npoints) {
@@ -152,10 +153,10 @@ PetscErrorCode CreateGLLCoordsWeights(PetscInt N,PetscInt *_npoints,PetscReal **
   if (_w) {
     *_w = w;
   } else {
-    PetscFree(w);
+    ierr = PetscFree(w);CHKERRQ(ierr);
   }
-  PetscFree(xold);
-  PetscFree(P);
+  ierr = PetscFree(xold);CHKERRQ(ierr);
+  ierr = PetscFree(P);CHKERRQ(ierr);
 
   PetscFunctionReturn(0);
 }
@@ -214,7 +215,7 @@ PetscErrorCode TabulateBasis1d_CLEGENDRE(PetscInt npoints,PetscReal xi[],PetscIn
   PC pc;
   
   
-  CreateGLLCoordsWeights(order,&nbasis,&xilocal,NULL);
+  ierr = CreateGLLCoordsWeights(order,&nbasis,&xilocal,NULL);CHKERRQ(ierr);
   
   ierr = PetscMalloc(sizeof(PetscReal)*nbasis,&monomials);CHKERRQ(ierr);
   
@@ -348,7 +349,7 @@ PetscErrorCode TabulateBasisDerivatives1d_CLEGENDRE(PetscInt npoints,PetscReal x
   PC pc;
   
   
-  CreateGLLCoordsWeights(order,&nbasis,&xilocal,NULL);
+  ierr = CreateGLLCoordsWeights(order,&nbasis,&xilocal,NULL);CHKERRQ(ierr);
   
   ierr = PetscMalloc(sizeof(PetscReal)*nbasis,&monomials);CHKERRQ(ierr);
   
@@ -529,26 +530,26 @@ PetscErrorCode TabulateBasisDerivativesTensorProduct2d(PetscInt order,PetscReal 
   */
   
   /* free up mempry */
-  PetscFree(xiq);
+  ierr = PetscFree(xiq);CHKERRQ(ierr);
   for (k=0; k<nqp; k++) {
-    PetscFree(dphi_xi[k]);
+    ierr = PetscFree(dphi_xi[k]);CHKERRQ(ierr);
   }
-  PetscFree(dphi_xi);
+  ierr = PetscFree(dphi_xi);CHKERRQ(ierr);
   
   if (_dN_dxi) { *_dN_dxi = dN_dxi; }
   else {
     for (k=0; k<nqp*nqp; k++) {
-      PetscFree(dN_dxi[k]);
+      ierr = PetscFree(dN_dxi[k]);CHKERRQ(ierr);
     }
-    PetscFree(dN_dxi);
+    ierr = PetscFree(dN_dxi);CHKERRQ(ierr);
   }
 
   if (_dN_deta) { *_dN_deta = dN_deta; }
   else {
     for (k=0; k<nqp*nqp; k++) {
-      PetscFree(dN_deta[k]);
+      ierr = PetscFree(dN_deta[k]);CHKERRQ(ierr);
     }
-    PetscFree(dN_deta);
+    ierr = PetscFree(dN_deta);CHKERRQ(ierr);
   }
   
   PetscFunctionReturn(0);
@@ -609,33 +610,33 @@ PetscErrorCode TabulateBasisDerivativesAtPointTensorProduct2d(PetscReal xiq[],Pe
   
   /* free up mempry */
   for (k=0; k<nqp; k++) {
-    PetscFree(dphi_xi[k]);
-    PetscFree(dphi_eta[k]);
+    ierr = PetscFree(dphi_xi[k]);CHKERRQ(ierr);
+    ierr = PetscFree(dphi_eta[k]);CHKERRQ(ierr);
   }
-  PetscFree(dphi_xi);
-  PetscFree(dphi_eta);
+  ierr = PetscFree(dphi_xi);CHKERRQ(ierr);
+  ierr = PetscFree(dphi_eta);CHKERRQ(ierr);
   
   for (k=0; k<nqp; k++) {
-    PetscFree(Ni_xi[k]);
-    PetscFree(Ni_eta[k]);
+    ierr = PetscFree(Ni_xi[k]);CHKERRQ(ierr);
+    ierr = PetscFree(Ni_eta[k]);CHKERRQ(ierr);
   }
-  PetscFree(Ni_xi);
-  PetscFree(Ni_eta);
+  ierr = PetscFree(Ni_xi);CHKERRQ(ierr);
+  ierr = PetscFree(Ni_eta);CHKERRQ(ierr);
   
   if (_dN_dxi) { *_dN_dxi = dN_dxi; }
   else {
     for (k=0; k<nqp*nqp; k++) {
-      PetscFree(dN_dxi[k]);
+      ierr = PetscFree(dN_dxi[k]);CHKERRQ(ierr);
     }
-    PetscFree(dN_dxi);
+    ierr = PetscFree(dN_dxi);CHKERRQ(ierr);
   }
   
   if (_dN_deta) { *_dN_deta = dN_deta; }
   else {
     for (k=0; k<nqp*nqp; k++) {
-      PetscFree(dN_deta[k]);
+      ierr = PetscFree(dN_deta[k]);CHKERRQ(ierr);
     }
-    PetscFree(dN_deta);
+    ierr = PetscFree(dN_deta);CHKERRQ(ierr);
   }
   
   PetscFunctionReturn(0);
@@ -644,9 +645,10 @@ PetscErrorCode TabulateBasisDerivativesAtPointTensorProduct2d(PetscReal xiq[],Pe
 PetscErrorCode SpecFECtxCreate(SpecFECtx *c)
 {
   SpecFECtx ctx;
+  PetscErrorCode ierr;
   
-  PetscMalloc(sizeof(struct _p_SpecFECtx),&ctx);
-  PetscMemzero(ctx,sizeof(struct _p_SpecFECtx));
+  ierr = PetscMalloc(sizeof(struct _p_SpecFECtx),&ctx);CHKERRQ(ierr);
+  ierr = PetscMemzero(ctx,sizeof(struct _p_SpecFECtx));CHKERRQ(ierr);
   ctx->source_implementation = -1;
   *c = ctx;
   PetscFunctionReturn(0);
@@ -657,8 +659,8 @@ PetscErrorCode SpecFECtxCreateENMap2d(SpecFECtx c)
   PetscErrorCode ierr;
   PetscInt ni0,nj0,i,j,ei,ej,ecnt,*emap,nid;
   
-  PetscMalloc(sizeof(PetscInt)*c->ne*c->npe,&c->element);
-  PetscMemzero(c->element,sizeof(PetscInt)*c->ne*c->npe);
+  ierr = PetscMalloc(sizeof(PetscInt)*c->ne*c->npe,&c->element);CHKERRQ(ierr);
+  ierr = PetscMemzero(c->element,sizeof(PetscInt)*c->ne*c->npe);CHKERRQ(ierr);
 
   ecnt = 0;
   for (ej=0; ej<c->my; ej++) {
@@ -796,7 +798,7 @@ PetscErrorCode SpecFECtxCreateMesh(SpecFECtx c,PetscInt dim,PetscInt mx,PetscInt
       ierr = SpecFECtxCreateMeshCoords2d(c);CHKERRQ(ierr);
 
       /* tensor product for weights */
-      PetscMalloc(sizeof(PetscReal)*c->npe,&c->w);
+      ierr = PetscMalloc(sizeof(PetscReal)*c->npe,&c->w);CHKERRQ(ierr);
       for (j=0; j<c->npe_1d; j++) {
         for (i=0; i<c->npe_1d; i++) {
           c->w[i+j*c->npe_1d] = c->w1d[i] * c->w1d[j];
@@ -811,13 +813,13 @@ PetscErrorCode SpecFECtxCreateMesh(SpecFECtx c,PetscInt dim,PetscInt mx,PetscInt
 
   c->nqp = c->npe;
   
-  PetscMalloc(sizeof(QPntIsotropicElastic)*c->nqp*c->ne,&c->qp_data);
-  PetscMemzero(c->qp_data,sizeof(QPntIsotropicElastic)*c->nqp*c->ne);
+  ierr = PetscMalloc(sizeof(QPntIsotropicElastic)*c->nqp*c->ne,&c->qp_data);CHKERRQ(ierr);
+  ierr = PetscMemzero(c->qp_data,sizeof(QPntIsotropicElastic)*c->nqp*c->ne);CHKERRQ(ierr);
   
-  PetscMalloc(sizeof(PetscReal)*c->npe*c->dim,&c->elbuf_coor);
-  PetscMalloc(sizeof(PetscReal)*c->npe*c->dofs,&c->elbuf_field);
-  PetscMalloc(sizeof(PetscReal)*c->npe*c->dofs,&c->elbuf_field2);
-  PetscMalloc(sizeof(PetscInt)*c->npe*c->dofs,&c->elbuf_dofs);
+  ierr = PetscMalloc(sizeof(PetscReal)*c->npe*c->dim,&c->elbuf_coor);CHKERRQ(ierr);
+  ierr = PetscMalloc(sizeof(PetscReal)*c->npe*c->dofs,&c->elbuf_field);CHKERRQ(ierr);
+  ierr = PetscMalloc(sizeof(PetscReal)*c->npe*c->dofs,&c->elbuf_field2);CHKERRQ(ierr);
+  ierr = PetscMalloc(sizeof(PetscInt)*c->npe*c->dofs,&c->elbuf_dofs);CHKERRQ(ierr);
   
   PetscFunctionReturn(0);
 }
@@ -958,7 +960,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics2d(SpecFECtx c,Vec u,Vec F)
                                                   c->npe_1d,c->dN_dxi,c->dN_deta,
                                                   c->dN_dx,c->dN_dy);
     
-    PetscMemzero(fe,sizeof(PetscReal)*nbasis*ndof);
+    ierr = PetscMemzero(fe,sizeof(PetscReal)*nbasis*ndof);CHKERRQ(ierr);
     
     for (q=0; q<c->nqp; q++) {
       PetscReal            fac;
@@ -1129,8 +1131,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
   ierr = DMGetCoordinates(c->dm,&coor);CHKERRQ(ierr);
   ierr = VecGetArrayRead(coor,&LA_coor);CHKERRQ(ierr);
   
-  PetscMalloc(sizeof(PetscInt)*nsources,&eowner_source);
-  PetscMalloc(sizeof(PetscInt)*nsources,&closest_qp);
+  ierr = PetscMalloc(sizeof(PetscInt)*nsources,&eowner_source);CHKERRQ(ierr);
+  ierr = PetscMalloc(sizeof(PetscInt)*nsources,&closest_qp);CHKERRQ(ierr);
 
   /* locate cell containing source */
   ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
@@ -1222,7 +1224,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
       elcoords[2*i+1] = LA_coor[2*nidx+1];
     }
     
-    PetscMemzero(fe,sizeof(PetscReal)*nbasis*ndof);
+    ierr = PetscMemzero(fe,sizeof(PetscReal)*nbasis*ndof);CHKERRQ(ierr);
     
     ElementEvaluateDerivatives_CellWiseConstant2d(1,nbasis,elcoords,
                                                   c->npe_1d,&dN_dxi_q,&dN_deta_q,&dN_dx_q,&dN_dy_q);
@@ -1311,8 +1313,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
   
   ierr = VecRestoreArrayRead(coor,&LA_coor);CHKERRQ(ierr);
   
-  PetscFree(eowner_source);
-  PetscFree(closest_qp);
+  ierr = PetscFree(eowner_source);CHKERRQ(ierr);
+  ierr = PetscFree(closest_qp);CHKERRQ(ierr);
   
   PetscFunctionReturn(0);
 }
@@ -1345,7 +1347,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d(SpecFECtx c,PetscI
   ierr = DMGetCoordinates(c->dm,&coor);CHKERRQ(ierr);
   ierr = VecGetArrayRead(coor,&LA_coor);CHKERRQ(ierr);
   
-  PetscMalloc(sizeof(PetscInt)*nsources,&eowner_source);
+  ierr = PetscMalloc(sizeof(PetscInt)*nsources,&eowner_source);CHKERRQ(ierr);
   
   /* locate cell containing source */
   ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
@@ -1423,7 +1425,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d(SpecFECtx c,PetscI
     dN_dx_q    = c->dN_dx[0];
     dN_dy_q    = c->dN_dy[0];
     
-    PetscMemzero(fe,sizeof(PetscReal)*nbasis*ndof);
+    ierr = PetscMemzero(fe,sizeof(PetscReal)*nbasis*ndof);CHKERRQ(ierr);
     
     ElementEvaluateDerivatives_CellWiseConstant2d(1,nbasis,elcoords,
                                                   c->npe_1d,&dN_dxi_q,&dN_deta_q,&dN_dx_q,&dN_dy_q);
@@ -1507,17 +1509,17 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d(SpecFECtx c,PetscI
 #endif
     
     for (k=0; k<1; k++) {
-      PetscFree(dN_dxi[k]);
-      PetscFree(dN_deta[k]);
+      ierr = PetscFree(dN_dxi[k]);CHKERRQ(ierr);
+      ierr = PetscFree(dN_deta[k]);CHKERRQ(ierr);
     }
-    PetscFree(dN_dxi);
-    PetscFree(dN_deta);
+    ierr = PetscFree(dN_dxi);CHKERRQ(ierr);
+    ierr = PetscFree(dN_deta);CHKERRQ(ierr);
   
   }
   ierr = VecAssemblyBegin(F);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(F);CHKERRQ(ierr);
   
-  PetscFree(eowner_source);
+  ierr = PetscFree(eowner_source);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(coor,&LA_coor);CHKERRQ(ierr);
   
   
@@ -1604,7 +1606,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_Kernel_CSpline(Spe
       
       moment_k = &moment[4*k];
 
-      PetscMemzero(fe,sizeof(PetscReal)*nbasis*ndof);
+      ierr = PetscMemzero(fe,sizeof(PetscReal)*nbasis*ndof);CHKERRQ(ierr);
       
       ElementEvaluateDerivatives_CellWiseConstant2d(c->nqp,nbasis,elcoords,
                                                     c->npe_1d,c->dN_dxi,c->dN_deta,c->dN_dx,c->dN_dy);
@@ -1686,7 +1688,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_P0(SpecFECtx c,Pet
   ierr = DMGetCoordinates(c->dm,&coor);CHKERRQ(ierr);
   ierr = VecGetArrayRead(coor,&LA_coor);CHKERRQ(ierr);
   
-  PetscMalloc(sizeof(PetscInt)*nsources,&eowner_source);
+  ierr = PetscMalloc(sizeof(PetscInt)*nsources,&eowner_source);CHKERRQ(ierr);
   
   /* locate cell containing source */
   ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
@@ -1758,7 +1760,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_P0(SpecFECtx c,Pet
     dN_dx_q    = c->dN_dx[0];
     dN_dy_q    = c->dN_dy[0];
     
-    PetscMemzero(fe,sizeof(PetscReal)*nbasis*ndof);
+    ierr = PetscMemzero(fe,sizeof(PetscReal)*nbasis*ndof);CHKERRQ(ierr);
     
     ElementEvaluateDerivatives_CellWiseConstant2d(1,nbasis,elcoords,
                                                   c->npe_1d,&dN_dxi_q,&dN_deta_q,&dN_dx_q,&dN_dy_q);
@@ -1784,17 +1786,17 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_P0(SpecFECtx c,Pet
     ierr = VecSetValues(F,nbasis*ndof,eldofs,fe,ADD_VALUES);CHKERRQ(ierr);
     
     for (k=0; k<1; k++) {
-      PetscFree(dN_dxi[k]);
-      PetscFree(dN_deta[k]);
+      ierr = PetscFree(dN_dxi[k]);CHKERRQ(ierr);
+      ierr = PetscFree(dN_deta[k]);CHKERRQ(ierr);
     }
-    PetscFree(dN_dxi);
-    PetscFree(dN_deta);
+    ierr = PetscFree(dN_dxi);CHKERRQ(ierr);
+    ierr = PetscFree(dN_deta);CHKERRQ(ierr);
     
   }
   ierr = VecAssemblyBegin(F);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(F);CHKERRQ(ierr);
   
-  PetscFree(eowner_source);
+  ierr = PetscFree(eowner_source);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(coor,&LA_coor);CHKERRQ(ierr);
   
   PetscFunctionReturn(0);
