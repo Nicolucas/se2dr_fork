@@ -33,7 +33,7 @@ typedef struct {
 } QPntIsotropicElastic;
 
 struct _p_SpecFECtx {
-  PetscMPIInt rank;
+  PetscMPIInt rank,size;
   PetscInt basisorder;
   PetscInt mx,my,mz;
   PetscInt mx_g,my_g,mz_g,nx_g,ny_g,nz_g;
@@ -697,6 +697,7 @@ PetscErrorCode SpecFECtxCreate(SpecFECtx *c)
   ierr = PetscMalloc(sizeof(struct _p_SpecFECtx),&ctx);CHKERRQ(ierr);
   ierr = PetscMemzero(ctx,sizeof(struct _p_SpecFECtx));CHKERRQ(ierr);
   ierr = MPI_Comm_rank(PETSC_COMM_WORLD,&ctx->rank);CHKERRQ(ierr);
+  ierr = MPI_Comm_size(PETSC_COMM_WORLD,&ctx->size);CHKERRQ(ierr);
   ctx->source_implementation = -1;
   *c = ctx;
   PetscFunctionReturn(0);
@@ -908,6 +909,30 @@ PetscErrorCode SpecFECtxGetCornerBasis_MPI(SpecFECtx c,PetscInt *si,PetscInt *si
       break;
     }
   }
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SpecFECtxGetLocalBoundingBox(SpecFECtx c,PetscReal gmin[],PetscReal gmax[])
+{
+  PetscErrorCode ierr;
+  PetscInt si[2],si_g[2],m,n,ii,jj;
+  const PetscReal *LA_coor;
+  Vec coor;
+  
+  ierr = SpecFECtxGetCornerBasis_MPI(c,&si[0],&si_g[0],&si[1],&si_g[1]);CHKERRQ(ierr);
+  ierr = DMDAGetGhostCorners(c->dm,NULL,NULL,NULL,&m,&n,NULL);CHKERRQ(ierr);
+  ierr = DMGetCoordinatesLocal(c->dm,&coor);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(coor,&LA_coor);CHKERRQ(ierr);
+  ii = si[0];
+  jj = si[1];
+  gmin[0] = LA_coor[2*(ii + jj*m)+0];
+  gmin[1] = LA_coor[2*(ii + jj*m)+1];
+  ii = si[0] + c->mx * c->basisorder + 1;
+  jj = si[1] + c->my * c->basisorder + 1;
+  gmax[0] = LA_coor[2*(ii + jj*m)+0];
+  gmax[1] = LA_coor[2*(ii + jj*m)+1];
+  ierr = VecRestoreArrayRead(coor,&LA_coor);CHKERRQ(ierr);
+  
   PetscFunctionReturn(0);
 }
 
@@ -1201,7 +1226,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics2d(SpecFECtx c,Vec u,Vec F)
   PetscReal e_vec[3],sigma_vec[3];
   PetscInt  *element,*elnidx,*eldofs;
   PetscReal *fe,*ux,*uy,*elcoords,detJ,*field;
-  Vec       coor;
+  Vec       coor,ul;
   const PetscReal *LA_coor,*LA_u;
   QPntIsotropicElastic *celldata;
   
@@ -1216,10 +1241,13 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics2d(SpecFECtx c,Vec u,Vec F)
   element  = c->element;
   field    = c->elbuf_field2;
   
-  ierr = DMGetCoordinates(c->dm,&coor);CHKERRQ(ierr);
+  ierr = DMGetCoordinatesLocal(c->dm,&coor);CHKERRQ(ierr);
   ierr = VecGetArrayRead(coor,&LA_coor);CHKERRQ(ierr);
   
-  ierr = VecGetArrayRead(u,&LA_u);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(c->dm,&ul);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalBegin(c->dm,u,INSERT_VALUES,ul);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(c->dm,u,INSERT_VALUES,ul);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(ul,&LA_u);CHKERRQ(ierr);
   
   ux = &field[0];
   uy = &field[nbasis];
@@ -1319,11 +1347,12 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics2d(SpecFECtx c,Vec u,Vec F)
       }
       
     }
-    ierr = VecSetValues(F,nbasis*ndof,eldofs,fe,ADD_VALUES);CHKERRQ(ierr);
+    ierr = VecSetValuesLocal(F,nbasis*ndof,eldofs,fe,ADD_VALUES);CHKERRQ(ierr);
   }
   ierr = VecAssemblyBegin(F);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(F);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(u,&LA_u);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(ul,&LA_u);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(c->dm,&ul);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(coor,&LA_coor);CHKERRQ(ierr);
   
   PetscFunctionReturn(0);
@@ -1348,7 +1377,7 @@ PetscErrorCode AssembleBilinearForm_Mass2d(SpecFECtx c,Vec A)
   Me       = c->elbuf_field;
   element  = c->element;
   
-  ierr = DMGetCoordinates(c->dm,&coor);CHKERRQ(ierr);
+  ierr = DMGetCoordinatesLocal(c->dm,&coor);CHKERRQ(ierr);
   ierr = VecGetArrayRead(coor,&LA_coor);CHKERRQ(ierr);
   
   for (e=0; e<c->ne; e++) {
@@ -1389,7 +1418,7 @@ PetscErrorCode AssembleBilinearForm_Mass2d(SpecFECtx c,Vec A)
       index = 2*q + 1;
       Me[index] = Me_ii;
     }
-    ierr = VecSetValues(A,nbasis*ndof,eldofs,Me,ADD_VALUES);CHKERRQ(ierr);
+    ierr = VecSetValuesLocal(A,nbasis*ndof,eldofs,Me,ADD_VALUES);CHKERRQ(ierr);
   }
   ierr = VecAssemblyBegin(A);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(A);CHKERRQ(ierr);
@@ -1413,6 +1442,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
   const PetscReal   *LA_coor;
   Vec         coor;
   
+  if (c->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   ierr = VecZeroEntries(F);CHKERRQ(ierr);
   
   eldofs   = c->elbuf_dofs;
@@ -1629,6 +1659,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d(SpecFECtx c,PetscI
   Vec         coor;
   PetscReal   **dN_dxi,**dN_deta;
   
+  if (c->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   ierr = VecZeroEntries(F);CHKERRQ(ierr);
   
   eldofs   = c->elbuf_dofs;
@@ -1835,6 +1866,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_Kernel_CSpline(Spe
   PetscReal gmin[3],gmax[3],dx,dy,ds,kernel_h;
   PetscBool flg;
   
+  if (c->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
   dx = (gmax[0] - gmin[0])/((PetscReal)c->mx);
   dy = (gmax[1] - gmin[1])/((PetscReal)c->my);
@@ -1970,6 +2002,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_P0(SpecFECtx c,Pet
   Vec         coor;
   PetscReal   **dN_dxi,**dN_deta;
   
+  if (c->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   ierr = VecZeroEntries(F);CHKERRQ(ierr);
   
   eldofs   = c->elbuf_dofs;
@@ -2173,7 +2206,7 @@ PetscErrorCode ElastoDynamicsConvertLame2Velocity(PetscReal rho,PetscReal mu,Pet
 PetscErrorCode ElastoDynamicsComputeTimeStep_2d(SpecFECtx ctx,PetscReal *_dt)
 {
   PetscInt e,q,order;
-  PetscReal dt_min,polynomial_fac;
+  PetscReal dt_min,dt_min_g,polynomial_fac;
   QPntIsotropicElastic *qpdata;
   PetscReal gmin[3],gmax[3],min_el_r,dx,dy;
   PetscErrorCode ierr;
@@ -2186,8 +2219,8 @@ PetscErrorCode ElastoDynamicsComputeTimeStep_2d(SpecFECtx ctx,PetscReal *_dt)
   polynomial_fac = 1.0 / (2.0 * (PetscReal)order + 1.0);
   
   ierr = DMDAGetBoundingBox(ctx->dm,gmin,gmax);CHKERRQ(ierr);
-  dx = (gmax[0] - gmin[0])/((PetscReal)ctx->mx);
-  dy = (gmax[1] - gmin[1])/((PetscReal)ctx->my);
+  dx = (gmax[0] - gmin[0])/((PetscReal)ctx->mx_g);
+  dy = (gmax[1] - gmin[1])/((PetscReal)ctx->my_g);
   
   min_el_r = dx;
   min_el_r = PetscMin(min_el_r,dy);
@@ -2218,8 +2251,9 @@ PetscErrorCode ElastoDynamicsComputeTimeStep_2d(SpecFECtx ctx,PetscReal *_dt)
     
     dt_min = PetscMin(dt_min,value);
   }
+  ierr = MPI_Allreduce(&dt_min,&dt_min_g,1,MPIU_SCALAR,MPI_MIN,PETSC_COMM_WORLD);CHKERRQ(ierr);
   
-  *_dt = dt_min;
+  *_dt = dt_min_g;
   
   PetscFunctionReturn(0);
 }
@@ -2235,6 +2269,7 @@ PetscErrorCode RecordUV(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,Vec v)
   PetscInt ni,nj,ei,ej,n,nid,eid,*element,*elbasis;
   static char filename[PETSC_MAX_PATH_LEN];
   
+  if (c->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   if (!beenhere) {
     switch (c->source_implementation) {
       case -1:
@@ -2326,6 +2361,7 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
   static PetscReal N[400];
   static char filename[PETSC_MAX_PATH_LEN];
   
+  if (c->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   if (!beenhere) {
     switch (c->source_implementation) {
       case -1:
@@ -2450,7 +2486,7 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode RecordUVA_MultipleStations_NearestGLL(SpecFECtx c,PetscReal time,PetscInt nr,PetscReal xr[],Vec u,Vec v,Vec a)
+PetscErrorCode RecordUVA_MultipleStations_NearestGLL_SEQ(SpecFECtx c,PetscReal time,PetscInt nr,PetscReal xr[],Vec u,Vec v,Vec a)
 {
   FILE             *fp;
   const PetscReal  *LA_u,*LA_v,*LA_a;
@@ -2461,6 +2497,7 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL(SpecFECtx c,PetscReal time,
   PetscErrorCode   ierr;
 
   
+  if (c->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Supports sequential only");
   if (!beenhere) {
     const PetscReal *LA_c;
     Vec coor;
@@ -2481,15 +2518,15 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL(SpecFECtx c,PetscReal time,
       if (xr[2*r+0] > gmax[0]) SETERRQ3(PETSC_COMM_SELF,PETSC_ERR_USER,"Receiver %D, x-coordinate (%+1.4e) > max(domain).x (%+1.4e)",r,xr[2*r+0],gmax[0]);
       if (xr[2*r+1] > gmax[1]) SETERRQ3(PETSC_COMM_SELF,PETSC_ERR_USER,"Receiver %D, y-coordinate (%+1.4e) > max(domain).y (%+1.4e)",r,xr[2*r+1],gmax[1]);
       
-      dx = (gmax[0] - gmin[0])/((PetscReal)c->mx);
+      dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
       ei = (xr[2*r+0] - gmin[0])/dx;
-      if (ei == c->mx) ei--;
+      if (ei == c->mx_g) ei--;
       
-      dy = (gmax[1] - gmin[1])/((PetscReal)c->my);
+      dy = (gmax[1] - gmin[1])/((PetscReal)c->my_g);
       ej = (xr[2*r+1] - gmin[1])/dy;
-      if (ej == c->my) ej--;
+      if (ej == c->my_g) ej--;
       
-      eid = ei + ej * c->mx;
+      eid = ei + ej * c->mx_g;
     
       /* get element -> node map */
       element = c->element;
@@ -2551,10 +2588,165 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL(SpecFECtx c,PetscReal time,
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal time,PetscInt nr,PetscReal xr[],Vec u,Vec v,Vec a)
+{
+  FILE             *fp;
+  const PetscReal  *LA_u,*LA_v,*LA_a;
+  static PetscBool beenhere = PETSC_FALSE;
+  static char      filename[PETSC_MAX_PATH_LEN];
+  static PetscInt  *nid_list = NULL;
+  PetscInt         r;
+  Vec              lu,lv,la;
+  PetscErrorCode   ierr;
+  
+  
+  if (!beenhere) {
+    const PetscReal *LA_c;
+    Vec             coor;
+    PetscReal       gmin[3],gmax[3],gmin_domain[3],gmax_domain[3],dx,dy,sep2min,sep2;
+    PetscInt        ni,nj,ei,ej,n,nid,eid,*element,*elbasis;
+    
+    sprintf(filename,"closestqpsource-receiverCP-uva-%dx%d-p%d-rank%d.dat",c->mx_g,c->my_g,c->basisorder,c->rank);
+    ierr = PetscMalloc1(nr,&nid_list);CHKERRQ(ierr);
+    for (r=0; r<nr; r++) {
+      nid_list[r] = -1;
+    }
+    
+    ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
+    ierr = SpecFECtxGetLocalBoundingBox(c,gmin_domain,gmax_domain);CHKERRQ(ierr);
+    ierr = DMGetCoordinatesLocal(c->dm,&coor);CHKERRQ(ierr);
+    ierr = VecGetArrayRead(coor,&LA_c);CHKERRQ(ierr);
+    
+    for (r=0; r<nr; r++) {
+      
+      if (xr[2*r+0] < gmin[0]) SETERRQ3(PETSC_COMM_SELF,PETSC_ERR_USER,"Receiver %D, x-coordinate (%+1.4e) < min(domain).x (%+1.4e)",r,xr[2*r+0],gmin[0]);
+      if (xr[2*r+1] < gmin[1]) SETERRQ3(PETSC_COMM_SELF,PETSC_ERR_USER,"Receiver %D, y-coordinate (%+1.4e) < min(domain).y (%+1.4e)",r,xr[2*r+1],gmin[1]);
+      if (xr[2*r+0] > gmax[0]) SETERRQ3(PETSC_COMM_SELF,PETSC_ERR_USER,"Receiver %D, x-coordinate (%+1.4e) > max(domain).x (%+1.4e)",r,xr[2*r+0],gmax[0]);
+      if (xr[2*r+1] > gmax[1]) SETERRQ3(PETSC_COMM_SELF,PETSC_ERR_USER,"Receiver %D, y-coordinate (%+1.4e) > max(domain).y (%+1.4e)",r,xr[2*r+1],gmax[1]);
+      
+      if (xr[2*r+0] < gmin_domain[0]) continue;
+      if (xr[2*r+1] < gmin_domain[1]) continue;
+      if (xr[2*r+0] > gmin_domain[0]) continue;
+      if (xr[2*r+1] > gmin_domain[1]) continue;
+      
+      dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
+      ei = (xr[2*r+0] - gmin_domain[0])/dx;
+      if (ei == c->mx) ei--;
+      
+      dy = (gmax[1] - gmin[1])/((PetscReal)c->my_g);
+      ej = (xr[2*r+1] - gmin_domain[1])/dy;
+      if (ej == c->my) ej--;
+      
+      if (ei < 0) continue;
+      if (ej < 0) continue;
+      
+      if (ei > c->mx) continue;
+      if (ej > c->my) continue;
+      
+      
+      eid = ei + ej * c->mx;
+      
+      /* get element -> node map */
+      element = c->element;
+      elbasis = &element[c->npe*eid];
+      
+      // find closest //
+      sep2min = 1.0e32;
+      nid = -1;
+      for (n=0; n<c->npe; n++) {
+        sep2  = (xr[2*r+0]-LA_c[2*elbasis[n]])*(xr[2*r+0]-LA_c[2*elbasis[n]]);
+        sep2 += (xr[2*r+1]-LA_c[2*elbasis[n]+1])*(xr[2*r+1]-LA_c[2*elbasis[n]+1]);
+        if (sep2 < sep2min) {
+          nid = elbasis[n];
+          sep2min = sep2;
+        }
+      }
+      nid_list[r] = nid;
+    }
+    
+    fp = fopen(filename,"w");
+    fprintf(fp,"# SpecFECtx meta data\n");
+    fprintf(fp,"#   mx %d : my %d : basis order %d\n",c->mx,c->my,c->basisorder);
+    fprintf(fp,"# Reciever meta data\n");
+    fprintf(fp,"#   + number reciever locations: %d\n",nr);
+    fprintf(fp,"#   + takes displ/velo/accel from basis nearest to requested reciever location\n");
+    for (r=0; r<nr; r++) {
+      if (nid_list[r] == -1) { continue; }
+      fprintf(fp,"#   + receiver location [%d]: x,y %+1.8e %+1.8e\n",r,xr[2*r+0],xr[2*r+1]);
+      fprintf(fp,"#   +   mapped to nearest node --> %+1.8e %+1.8e\n",LA_c[2*nid_list[r]],LA_c[2*nid_list[r]+1]);
+    }
+    fprintf(fp,"# Time series header <field>(<column index>)\n");
+    fprintf(fp,"#   time(1)\n");
+
+    PetscInt count = 0;
+    
+    for (r=0; r<nr; r++) {
+      PetscInt offset;
+      
+      if (nid_list[r] == -1) { continue; }
+
+      offset = 1 + count*6; /* 1 is for time */
+      
+      fprintf(fp,"#     ux(%d) uy(%d) vx(%d) vy(%d) ax(%d) ay(%d) -> station [%d]\n",offset+1,offset+2,offset+3,offset+4,offset+5,offset+6,r);
+      count++;
+    }
+    ierr = VecRestoreArrayRead(coor,&LA_c);CHKERRQ(ierr);
+    beenhere = PETSC_TRUE;
+  } else {
+    fp = fopen(filename,"a");
+  }
+  
+  ierr = DMGetLocalVector(c->dm,&lu);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(c->dm,&lv);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(c->dm,&la);CHKERRQ(ierr);
+  
+  ierr = DMGlobalToLocalBegin(c->dm,u,INSERT_VALUES,lu);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(c->dm,u,INSERT_VALUES,lu);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalBegin(c->dm,v,INSERT_VALUES,lv);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(c->dm,v,INSERT_VALUES,lv);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalBegin(c->dm,a,INSERT_VALUES,la);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(c->dm,a,INSERT_VALUES,la);CHKERRQ(ierr);
+  
+  ierr = VecGetArrayRead(lu,&LA_u);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(lv,&LA_v);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(la,&LA_a);CHKERRQ(ierr);
+  
+  fprintf(fp,"%1.4e",time);
+  for (r=0; r<nr; r++) {
+    if (nid_list[r] == -1) { continue; }
+    fprintf(fp," %+1.8e %+1.8e %+1.8e %+1.8e %+1.8e %+1.8e",LA_u[2*nid_list[r]],LA_u[2*nid_list[r]+1],LA_v[2*nid_list[r]],LA_v[2*nid_list[r]+1],LA_a[2*nid_list[r]],LA_a[2*nid_list[r]+1]);
+  }
+  fprintf(fp,"\n");
+  
+  ierr = VecRestoreArrayRead(a,&LA_a);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(v,&LA_v);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(u,&LA_u);CHKERRQ(ierr);
+
+  ierr = DMRestoreLocalVector(c->dm,&la);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(c->dm,&lv);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(c->dm,&lu);CHKERRQ(ierr);
+
+  fclose(fp);
+  
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode RecordUVA_MultipleStations_NearestGLL(SpecFECtx c,PetscReal time,PetscInt nr,PetscReal xr[],Vec u,Vec v,Vec a)
+{
+  PetscErrorCode ierr;
+  
+  if (c->size == 1) {
+    ierr = RecordUVA_MultipleStations_NearestGLL_SEQ(c,time,nr,xr,u,v,a);CHKERRQ(ierr);
+  } else {
+    ierr = RecordUVA_MultipleStations_NearestGLL_MPI(c,time,nr,xr,u,v,a);CHKERRQ(ierr);
+  }
+  PetscFunctionReturn(0);
+}
+
 PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSourceImplementationType itype,PetscReal coor[],PetscReal values[],SeismicSource *s)
 {
   SeismicSource src;
-  PetscReal gmin[2],gmax[2],cell_min[2];
+  PetscReal gmin[2],gmax[2],gmin_domain[2],gmax_domain[2],cell_min[2];
   PetscReal dx,dy,xi_source[2];
   PetscBool source_found;
   PetscInt eowner_source;
@@ -2565,22 +2757,30 @@ PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSou
   ierr = MPI_Comm_rank(PETSC_COMM_WORLD,&rank);CHKERRQ(ierr);
   /* locate cell containing source */
   ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
-  dx = (gmax[0] - gmin[0])/((PetscReal)c->mx);
-  dy = (gmax[1] - gmin[1])/((PetscReal)c->my);
+  dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
+  dy = (gmax[1] - gmin[1])/((PetscReal)c->my_g);
   
   if (coor[0] < gmin[0]) SETERRQ2(PETSC_COMM_SELF,PETSC_ERR_USER,"Source x-coordinate (%+1.4e) < min(domain).x (%+1.4e)",coor[0],gmin[0]);
   if (coor[1] < gmin[1]) SETERRQ2(PETSC_COMM_SELF,PETSC_ERR_USER,"Source y-coordinate (%+1.4e) < min(domain).y (%+1.4e)",coor[1],gmin[1]);
   if (coor[0] > gmax[0]) SETERRQ2(PETSC_COMM_SELF,PETSC_ERR_USER,"Source x-coordinate (%+1.4e) > max(domain).x (%+1.4e)",coor[0],gmax[0]);
   if (coor[1] > gmax[1]) SETERRQ2(PETSC_COMM_SELF,PETSC_ERR_USER,"Source y-coordinate (%+1.4e) > max(domain).y (%+1.4e)",coor[1],gmax[1]);
 
+  ierr = SpecFECtxGetLocalBoundingBox(c,gmin_domain,gmax_domain);CHKERRQ(ierr);
+
   source_found = PETSC_TRUE;
   eowner_source = -1;
   ii = -1;
   jj = -1;
-  {
+  
+  if (coor[0] < gmin_domain[0]) source_found = PETSC_FALSE;
+  if (coor[1] < gmin_domain[1]) source_found = PETSC_FALSE;
+  if (coor[0] > gmin_domain[0]) source_found = PETSC_FALSE;
+  if (coor[1] > gmin_domain[1]) source_found = PETSC_FALSE;
+  
+  if (source_found == PETSC_FALSE) { /* skip if already determined point is outside of the sub-domain */
     
-    ii = (PetscInt)( ( coor[0] - gmin[0] )/dx );
-    jj = (PetscInt)( ( coor[1] - gmin[1] )/dy );
+    ii = (PetscInt)( ( coor[0] - gmin_domain[0] )/dx );
+    jj = (PetscInt)( ( coor[1] - gmin_domain[1] )/dy );
     
     if (ii == c->mx) ii--;
     if (jj == c->my) jj--;
@@ -2588,8 +2788,8 @@ PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSou
     if (ii < 0) source_found = PETSC_FALSE;
     if (jj < 0) source_found = PETSC_FALSE;
     
-    if (ii > c->mx) source_found = PETSC_FALSE;
-    if (jj > c->my) source_found = PETSC_FALSE;
+    if (ii >= c->mx) source_found = PETSC_FALSE;
+    if (jj >= c->my) source_found = PETSC_FALSE;
     
     if (source_found) {
       eowner_source = ii + jj * c->mx;
@@ -2604,8 +2804,8 @@ PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSou
   }
   
   /* get local coordinates */
-  cell_min[0] = gmin[0] + ii * dx;
-  cell_min[1] = gmin[1] + jj * dy;
+  cell_min[0] = gmin_domain[0] + ii * dx;
+  cell_min[1] = gmin_domain[1] + jj * dy;
   
   xi_source[0] = 2.0 * (coor[0] - cell_min[0])/dx - 1.0;
   xi_source[1] = 2.0 * (coor[1] - cell_min[1])/dy - 1.0;
@@ -2641,7 +2841,7 @@ PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSou
     Vec coordinates;
     const PetscReal *LA_coor;
     
-    ierr = DMGetCoordinates(c->dm,&coordinates);CHKERRQ(ierr);
+    ierr = DMGetCoordinatesLocal(c->dm,&coordinates);CHKERRQ(ierr);
     ierr = VecGetArrayRead(coordinates,&LA_coor);CHKERRQ(ierr);
     
     elcoords = c->elbuf_coor;
@@ -2741,6 +2941,8 @@ PetscErrorCode SeismicSourceSetup(SeismicSource src)
 {
   PetscErrorCode ierr;
   
+  if (!src) PetscFunctionReturn(0);
+  
   if (src->issetup) PetscFunctionReturn(0);
   if (src->setup) {
     ierr = src->setup(src);CHKERRQ(ierr);
@@ -2779,7 +2981,7 @@ PetscErrorCode SeismicSourceAddValues_Pointwise(SeismicSource s,PetscReal stf,Ve
   //for (k=0; k<pw->nbasis; k++) {
   //  printf("buffer[%d] %+1.4e %+1.4e\n",k,pw->buffer[2*k],pw->buffer[2*k+1]);
   //}
-  ierr = VecSetValues(f,pw->nbasis*2,pw->element_indices,pw->buffer,ADD_VALUES);CHKERRQ(ierr);
+  ierr = VecSetValuesLocal(f,pw->nbasis*2,pw->element_indices,pw->buffer,ADD_VALUES);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -2871,7 +3073,7 @@ PetscErrorCode SeismicSourceSetup_Moment_Pointwise(SeismicSource s)
   ierr = SeismicSourceSetup_Pointwise(s,&ctx);CHKERRQ(ierr);
   
   /* get element coordinates */
-  ierr = DMGetCoordinates(s->sfem->dm,&coordinates);CHKERRQ(ierr);
+  ierr = DMGetCoordinatesLocal(s->sfem->dm,&coordinates);CHKERRQ(ierr);
   ierr = VecGetArrayRead(coordinates,&LA_coor);CHKERRQ(ierr);
   elcoords = s->sfem->elbuf_coor;
   
@@ -2966,6 +3168,8 @@ PetscErrorCode SeismicSourceEvaluate(PetscReal time,PetscInt nsources,SeismicSou
   
   ierr = VecZeroEntries(f);CHKERRQ(ierr);
   for (p=0; p<nsources; p++) {
+    if (!s[p]) continue;
+    
     if (!s[p]->issetup) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_USER,"Seismic source not setup. Must call SeismicSourceSetup()");
     
     if (!stf) {
@@ -3877,7 +4081,6 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,"uva.vts",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
   ierr = VecView(u,viewer);CHKERRQ(ierr);
   ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
-  return(0);
   
   ierr = AssembleBilinearForm_Mass2d(ctx,Md);CHKERRQ(ierr);
   
@@ -3885,6 +4088,9 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   
   nsources = 2;
   ierr = PetscMalloc1(nsources,&src);CHKERRQ(ierr);
+  for (s=0; s<nsources; s++) {
+    src[s] = NULL;
+  }
   
   /* configure source 1 */
   {
@@ -3917,6 +4123,7 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
     
     ierr = SeismicSourceCreate(ctx,SOURCE_TYPE_MOMENT,SOURCE_IMPL_NEAREST_QPOINT,source_coor,moment,&src[1]);CHKERRQ(ierr); /* note the index of src[] here */
   }
+  
   /* setup sources */
   for (s=0; s<nsources; s++) {
     ierr = SeismicSourceSetup(src[s]);CHKERRQ(ierr);
@@ -3936,12 +4143,15 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
    Define two source time functions
   */
   ierr = PetscMalloc1(nsources,&stf);CHKERRQ(ierr);
+  for (s=0; s<nsources; s++) {
+    stf[s] = NULL;
+  }
   
   /* configure stf for source 1 */
-  ierr = SeismicSTFCreate_Ricker(0.15,12.0,1.0,&stf[0]);CHKERRQ(ierr); /* note the index of stf[] here */
+  if (src[0]) { ierr = SeismicSTFCreate_Ricker(0.15,12.0,1.0,&stf[0]);CHKERRQ(ierr); /* note the index of stf[] here */ }
 
   /* configure stf for source 2 */
-  ierr = SeismicSTFCreate_Ricker(0.25,4.0,1.0,&stf[1]);CHKERRQ(ierr); /* note the index of stf[] here */
+  if (src[1]) { ierr = SeismicSTFCreate_Ricker(0.25,4.0,1.0,&stf[1]);CHKERRQ(ierr); /* note the index of stf[] here */ }
 
   /*
    Define the location of the receivers
@@ -4020,7 +4230,7 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
     /*
       Write out the u,v,a values at each receiver
     */
-    ierr = RecordUVA_MultipleStations_NearestGLL(ctx,time,nrecv,xr_list,u,v,a);CHKERRQ(ierr);
+    //ierr = RecordUVA_MultipleStations_NearestGLL(ctx,time,nrecv,xr_list,u,v,a);CHKERRQ(ierr);
     
     if (k%of == 0) {
       char name[PETSC_MAX_PATH_LEN];
