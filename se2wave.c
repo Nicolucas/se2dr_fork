@@ -2977,8 +2977,11 @@ int main(int argc,char **args)
 {
   PetscErrorCode ierr;
   PetscInt       mx,my;
+  PetscMPIInt    size;
   
   ierr = PetscInitialize(&argc,&args,(char*)0,NULL);CHKERRQ(ierr);
+  ierr = MPI_Comm_size(PETSC_COMM_WORLD,&size);CHKERRQ(ierr);
+  if (size != 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Only supports sequential execution - no MPI support");
   
   mx = my = 8;
   ierr = PetscOptionsGetInt(NULL,NULL,"-mx",&mx,NULL);CHKERRQ(ierr);
