@@ -3638,8 +3638,8 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   
   /* configure source 1 */
   {
-    PetscReal moment[] = { 0.0, 0.0, 0.0, 0.0 };
-    PetscReal source_coor[] = { 0.0, 100.0 };
+    PetscReal moment[] = { 0.0, 0.0, 0.0, 0.0 }; /* initialize moment tensor to 0 */
+    PetscReal source_coor[] = { 0.0, 100.0 }; /* define source location */
     PetscReal M;
     
     M = 1000.0; /* gar6more input usings M/rho = 1 */
@@ -3653,8 +3653,8 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
 
   /* configure source 2 */
   {
-    PetscReal moment[] = { 0.0, 0.0, 0.0, 0.0 };
-    PetscReal source_coor[] = { 400.0, 400.0 };
+    PetscReal moment[] = { 0.0, 0.0, 0.0, 0.0 }; /* initialize moment tensor to 0 */
+    PetscReal source_coor[] = { 400.0, 400.0 }; /* define source location */
     PetscReal M;
     
     M = 1000.0; /* gar6more input usings M/rho = 1 */
