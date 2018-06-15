@@ -53,8 +53,6 @@ struct _p_SpecFECtx {
 
 
 /* N = polynomial order */
-#undef __FUNCT__
-#define __FUNCT__ "CreateGLLCoordsWeights"
 PetscErrorCode CreateGLLCoordsWeights(PetscInt N,PetscInt *_npoints,PetscReal **_xi,PetscReal **_w)
 {
   PetscInt N1;
@@ -162,8 +160,6 @@ PetscErrorCode CreateGLLCoordsWeights(PetscInt N,PetscInt *_npoints,PetscReal **
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "MatComputeConditionNumber"
 PetscErrorCode MatComputeConditionNumber(Mat A,PetscReal *cond)
 {
   PetscReal *realpt,*complexpt,*nrmeigs;
@@ -206,8 +202,6 @@ PetscErrorCode MatComputeConditionNumber(Mat A,PetscReal *cond)
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "TabulateBasis1d_CLEGENDRE"
 PetscErrorCode TabulateBasis1d_CLEGENDRE(PetscInt npoints,PetscReal xi[],PetscInt order,PetscInt *_nbasis,PetscReal ***_Ni)
 {
   PetscErrorCode ierr;
@@ -342,8 +336,6 @@ PetscErrorCode TabulateBasis1d_CLEGENDRE(PetscInt npoints,PetscReal xi[],PetscIn
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "TabulateBasisDerivatives1d_CLEGENDRE"
 PetscErrorCode TabulateBasisDerivatives1d_CLEGENDRE(PetscInt npoints,PetscReal xi[],PetscInt order,PetscInt *_nbasis,PetscReal ***_GNix)
 {
   PetscErrorCode ierr;
@@ -482,8 +474,6 @@ PetscErrorCode TabulateBasisDerivatives1d_CLEGENDRE(PetscInt npoints,PetscReal x
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "TabulateBasisDerivativesTensorProduct2d"
 PetscErrorCode TabulateBasisDerivativesTensorProduct2d(PetscInt order,PetscReal ***_dN_dxi,PetscReal ***_dN_deta)
 {
   PetscErrorCode ierr;
@@ -564,8 +554,6 @@ PetscErrorCode TabulateBasisDerivativesTensorProduct2d(PetscInt order,PetscReal 
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "TabulateBasisDerivativesAtPointTensorProduct2d"
 PetscErrorCode TabulateBasisDerivativesAtPointTensorProduct2d(PetscReal xiq[],PetscInt order,PetscReal ***_dN_dxi,PetscReal ***_dN_deta)
 {
   PetscErrorCode ierr;
@@ -653,8 +641,6 @@ PetscErrorCode TabulateBasisDerivativesAtPointTensorProduct2d(PetscReal xiq[],Pe
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "SpecFECtxCreate"
 PetscErrorCode SpecFECtxCreate(SpecFECtx *c)
 {
   SpecFECtx ctx;
@@ -666,8 +652,6 @@ PetscErrorCode SpecFECtxCreate(SpecFECtx *c)
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "SpecFECtxCreateENMap2d"
 PetscErrorCode SpecFECtxCreateENMap2d(SpecFECtx c)
 {
   PetscErrorCode ierr;
@@ -701,8 +685,6 @@ PetscErrorCode SpecFECtxCreateENMap2d(SpecFECtx c)
 }
 
 /* Creates domain over [0,1]^d - scale later */
-#undef __FUNCT__
-#define __FUNCT__ "SpecFECtxCreateMeshCoords2d"
 PetscErrorCode SpecFECtxCreateMeshCoords2d(SpecFECtx c)
 {
   PetscErrorCode ierr;
@@ -745,8 +727,6 @@ PetscErrorCode SpecFECtxCreateMeshCoords2d(SpecFECtx c)
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "SpecFECtxScaleMeshCoords"
 PetscErrorCode SpecFECtxScaleMeshCoords(SpecFECtx c,PetscReal scale[],PetscReal shift[])
 {
   PetscErrorCode ierr;
@@ -785,8 +765,6 @@ PetscErrorCode SpecFECtxScaleMeshCoords(SpecFECtx c,PetscReal scale[],PetscReal 
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "SpecFECtxCreateMesh"
 PetscErrorCode SpecFECtxCreateMesh(SpecFECtx c,PetscInt dim,PetscInt mx,PetscInt my,PetscInt mz,PetscInt basisorder,PetscInt ndofs)
 {
   PetscErrorCode ierr;
@@ -843,8 +821,6 @@ PetscErrorCode SpecFECtxCreateMesh(SpecFECtx c,PetscInt dim,PetscInt mx,PetscInt
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "SpecFECtxSetConstantMaterialProperties"
 PetscErrorCode SpecFECtxSetConstantMaterialProperties(SpecFECtx c,PetscReal lambda,PetscReal mu,PetscReal rho)
 {
   PetscInt q;
@@ -858,8 +834,6 @@ PetscErrorCode SpecFECtxSetConstantMaterialProperties(SpecFECtx c,PetscReal lamb
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "SpecFECtxSetConstantMaterialProperties_Velocity"
 PetscErrorCode SpecFECtxSetConstantMaterialProperties_Velocity(SpecFECtx c,PetscReal Vp,PetscReal Vs,PetscReal rho)
 {
   PetscErrorCode ierr;
@@ -923,8 +897,6 @@ void ElementEvaluateDerivatives_CellWiseConstant2d(PetscInt nqp,PetscInt npe,Pet
  Assemble rhs
  L(u) = - \int B^T D B u dV
  */
-#undef __FUNCT__
-#define __FUNCT__ "AssembleLinearForm_ElastoDynamics2d"
 PetscErrorCode AssembleLinearForm_ElastoDynamics2d(SpecFECtx c,Vec u,Vec F)
 {
   PetscErrorCode ierr;
@@ -1060,8 +1032,6 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics2d(SpecFECtx c,Vec u,Vec F)
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "AssembleBilinearForm_Mass2d"
 PetscErrorCode AssembleBilinearForm_Mass2d(SpecFECtx c,Vec A)
 {
   PetscErrorCode ierr;
@@ -1131,8 +1101,6 @@ PetscErrorCode AssembleBilinearForm_Mass2d(SpecFECtx c,Vec A)
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP"
 PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(SpecFECtx c,PetscInt nsources,PetscReal xs[],PetscReal moment[],Vec F)
 {
   PetscErrorCode ierr;
@@ -1348,8 +1316,6 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "AssembleLinearForm_ElastoDynamicsMomentDirac2d"
 PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d(SpecFECtx c,PetscInt nsources,PetscReal xs[],PetscReal moment[],Vec F)
 {
   PetscErrorCode ierr;
@@ -1558,8 +1524,6 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d(SpecFECtx c,PetscI
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "AssembleLinearForm_ElastoDynamicsMomentDirac2d_Kernel_CSpline"
 PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_Kernel_CSpline(SpecFECtx c,PetscInt nsources,PetscReal xs[],PetscReal moment[],Vec F)
 {
   PetscErrorCode ierr;
@@ -1693,8 +1657,6 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_Kernel_CSpline(Spe
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "AssembleLinearForm_ElastoDynamicsMomentDirac2d_P0"
 PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_P0(SpecFECtx c,PetscInt nsources,PetscReal xs[],PetscReal moment[],Vec F)
 {
   PetscErrorCode ierr;
@@ -1837,8 +1799,6 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_P0(SpecFECtx c,Pet
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "ElastoDynamicsSetSourceImplementation"
 PetscErrorCode ElastoDynamicsSetSourceImplementation(SpecFECtx c,PetscInt ii)
 {
   PetscInt itype = 0;
@@ -1869,8 +1829,6 @@ PetscErrorCode ElastoDynamicsSetSourceImplementation(SpecFECtx c,PetscInt ii)
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "ElastoDynamicsSourceSetup"
 PetscErrorCode ElastoDynamicsSourceSetup(SpecFECtx ctx,PetscReal source_coor[],PetscReal moment[],Vec g)
 {
   PetscErrorCode ierr;
@@ -1907,8 +1865,6 @@ PetscErrorCode ElastoDynamicsSourceSetup(SpecFECtx ctx,PetscReal source_coor[],P
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "ElastoDynamicsConvertLame2Velocity"
 PetscErrorCode ElastoDynamicsConvertLame2Velocity(PetscReal rho,PetscReal mu,PetscReal lambda,PetscReal *Vs,PetscReal *Vp)
 {
   if (Vs) { *Vs = PetscSqrtReal(mu/rho); }
@@ -1917,8 +1873,6 @@ PetscErrorCode ElastoDynamicsConvertLame2Velocity(PetscReal rho,PetscReal mu,Pet
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "ElastoDynamicsComputeTimeStep_2d"
 PetscErrorCode ElastoDynamicsComputeTimeStep_2d(SpecFECtx ctx,PetscReal *_dt)
 {
   PetscInt e,q,order;
@@ -1972,8 +1926,6 @@ PetscErrorCode ElastoDynamicsComputeTimeStep_2d(SpecFECtx ctx,PetscReal *_dt)
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "RecordUV"
 PetscErrorCode RecordUV(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,Vec v)
 {
   FILE *fp;
@@ -2065,8 +2017,6 @@ PetscErrorCode RecordUV(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,Vec v)
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "RecordUV_interp"
 PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,Vec v)
 {
   FILE *fp;
@@ -2211,8 +2161,6 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
  stf[0] S(t_{n})
  stf[1] S(t_{n+1})
 */
-#undef __FUNCT__
-#define __FUNCT__ "TSExplicitNewmark"
 PetscErrorCode TSExplicitNewmark(Vec u,Vec v,Vec a,Vec Md,Vec f,PetscReal stf[],PetscReal dt,PetscReal alpha,PetscReal beta,PetscReal gamma)
 {
   Vec vi,dv,f_alpha;
@@ -2289,8 +2237,6 @@ PetscErrorCode TSExplicitNewmarkFourth(Vec u,Vec v,Vec a,Vec Md,Vec f,PetscReal 
 }
 #endif
 
-#undef __FUNCT__
-#define __FUNCT__ "specfem"
 PetscErrorCode specfem(PetscInt mx,PetscInt my)
 {
   PetscErrorCode ierr;
@@ -2459,8 +2405,6 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "EvaluateRickerWavelet"
 PetscErrorCode EvaluateRickerWavelet(PetscReal time,PetscReal t0,PetscReal freq,PetscReal amp,PetscReal *psi)
 {
   PetscReal arg,arg2,a,b;
@@ -2472,8 +2416,6 @@ PetscErrorCode EvaluateRickerWavelet(PetscReal time,PetscReal t0,PetscReal freq,
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "specfem_ex2"
 PetscErrorCode specfem_ex2(PetscInt mx,PetscInt my)
 {
   PetscErrorCode ierr;
@@ -2639,8 +2581,6 @@ PetscErrorCode specfem_ex2(PetscInt mx,PetscInt my)
 }
 
 
-#undef __FUNCT__
-#define __FUNCT__ "specfem_gare6"
 PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
 {
   PetscErrorCode ierr;
@@ -2829,8 +2769,6 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "specfem_gare6_ex2"
 PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
 {
   PetscErrorCode ierr;
@@ -3030,8 +2968,6 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
   PetscFunctionReturn(0);
 }
 
-#undef __FUNCT__
-#define __FUNCT__ "main"
 int main(int argc,char **args)
 {
   PetscErrorCode ierr;
