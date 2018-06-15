@@ -10,8 +10,13 @@
 
 ### 2. How do I get set up? ###
 
+* Requires a C compiler
 * Requires PETSc (`https://www.mcs.anl.gov/petsc`)
 * Must be compiled with PETSc version 3.9. This can be downloaded from here `https://www.mcs.anl.gov/petsc/download`
+* Once PETSc has been compiled, `se2wave` can be compiled simply by executing the following command
+``` 
+make all PETSC_DIR=/path/to/petsc PETSC_ARCH=name-of-petsc-arch
+```
 
 ### 3. Common options ###
 
