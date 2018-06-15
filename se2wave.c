@@ -3179,17 +3179,17 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
   
   time_max = 0.6;
   ierr = PetscOptionsGetReal(NULL,NULL,"-tmax",&time_max,NULL);CHKERRQ(ierr);
-  PetscPrintf(PETSC_COMM_WORLD,"[spec2d] Requested time period: %1.4e\n",time_max);
+  PetscPrintf(PETSC_COMM_WORLD,"[se2wave] Requested time period: %1.4e\n",time_max);
   
   ierr = ElastoDynamicsComputeTimeStep_2d(ctx,&dt);CHKERRQ(ierr);
   dt = dt * 0.2;
   ierr = PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);CHKERRQ(ierr);
-  PetscPrintf(PETSC_COMM_WORLD,"[spec2d] Using time step size: %1.4e\n",dt);
+  PetscPrintf(PETSC_COMM_WORLD,"[se2wave] Using time step size: %1.4e\n",dt);
   
   nt = 1000000;
   nt = (PetscInt)(time_max / dt ) + 4;
   ierr = PetscOptionsGetInt(NULL,NULL,"-nt",&nt,NULL);CHKERRQ(ierr);
-  PetscPrintf(PETSC_COMM_WORLD,"[spec2d] Estimated number of time steps: %D\n",nt);
+  PetscPrintf(PETSC_COMM_WORLD,"[se2wave] Estimated number of time steps: %D\n",nt);
   
   of = 5000;
   ierr = PetscOptionsGetInt(NULL,NULL,"-of",&of,NULL);CHKERRQ(ierr);
@@ -3393,17 +3393,17 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
   
   time_max = 0.4;
   ierr = PetscOptionsGetReal(NULL,NULL,"-tmax",&time_max,NULL);CHKERRQ(ierr);
-  PetscPrintf(PETSC_COMM_WORLD,"[spec2d] Requested time period: %1.4e\n",time_max);
+  PetscPrintf(PETSC_COMM_WORLD,"[se2wave] Requested time period: %1.4e\n",time_max);
   
   ierr = ElastoDynamicsComputeTimeStep_2d(ctx,&dt);CHKERRQ(ierr);
   dt = dt * 0.2;
   ierr = PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);CHKERRQ(ierr);
-  PetscPrintf(PETSC_COMM_WORLD,"[spec2d] Using time step size: %1.4e\n",dt);
+  PetscPrintf(PETSC_COMM_WORLD,"[se2wave] Using time step size: %1.4e\n",dt);
   
   nt = 1000000;
   nt = (PetscInt)(time_max / dt ) + 4;
   ierr = PetscOptionsGetInt(NULL,NULL,"-nt",&nt,NULL);CHKERRQ(ierr);
-  PetscPrintf(PETSC_COMM_WORLD,"[spec2d] Estimated number of time steps: %D\n",nt);
+  PetscPrintf(PETSC_COMM_WORLD,"[se2wave] Estimated number of time steps: %D\n",nt);
   
   of = 5000;
   ierr = PetscOptionsGetInt(NULL,NULL,"-of",&of,NULL);CHKERRQ(ierr);
@@ -3655,17 +3655,17 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   
   time_max = 0.4;
   ierr = PetscOptionsGetReal(NULL,NULL,"-tmax",&time_max,NULL);CHKERRQ(ierr);
-  PetscPrintf(PETSC_COMM_WORLD,"[spec2d] Requested time period: %1.4e\n",time_max);
+  PetscPrintf(PETSC_COMM_WORLD,"[se2wave] Requested time period: %1.4e\n",time_max);
   
   ierr = ElastoDynamicsComputeTimeStep_2d(ctx,&dt);CHKERRQ(ierr);
   dt = dt * 0.2;
   ierr = PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);CHKERRQ(ierr);
-  PetscPrintf(PETSC_COMM_WORLD,"[spec2d] Using time step size: %1.4e\n",dt);
+  PetscPrintf(PETSC_COMM_WORLD,"[se2wave] Using time step size: %1.4e\n",dt);
   
   nt = 1000000;
   nt = (PetscInt)(time_max / dt ) + 4;
   ierr = PetscOptionsGetInt(NULL,NULL,"-nt",&nt,NULL);CHKERRQ(ierr);
-  PetscPrintf(PETSC_COMM_WORLD,"[spec2d] Estimated number of time steps: %D\n",nt);
+  PetscPrintf(PETSC_COMM_WORLD,"[se2wave] Estimated number of time steps: %D\n",nt);
   
   of = 5000;
   ierr = PetscOptionsGetInt(NULL,NULL,"-of",&of,NULL);CHKERRQ(ierr);
