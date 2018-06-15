@@ -2325,9 +2325,9 @@ PetscErrorCode RecordUV(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,Vec v)
     fprintf(fp,"# SpecFECtx meta data\n");
     fprintf(fp,"#   mx %d : my %d : basis order %d\n",c->mx,c->my,c->basisorder);
     fprintf(fp,"#   source implementation %d\n",c->source_implementation);
-    fprintf(fp,"# Reciever meta data\n");
+    fprintf(fp,"# Receiver meta data\n");
     fprintf(fp,"#   + receiver location: x,y %+1.8e %+1.8e\n",xr[0],xr[1]);
-    fprintf(fp,"#   + takes displ/velo from basis nearest to requested reciever location\n");
+    fprintf(fp,"#   + takes displ/velo from basis nearest to requested receiver location\n");
     fprintf(fp,"#   + receiver location: x,y %+1.8e %+1.8e --mapped to nearest node --> %+1.8e %+1.8e\n",xr[0],xr[1],LA_c[2*nid],LA_c[2*nid+1]);
     fprintf(fp,"# Time series header\n");
     fprintf(fp,"#   time ux uy vx vy\n");
@@ -2389,9 +2389,9 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
     fprintf(fp,"# SpecFECtx meta data\n");
     fprintf(fp,"#   mx %d : my %d : basis order %d\n",c->mx,c->my,c->basisorder);
     fprintf(fp,"#   source implementation %d\n",c->source_implementation);
-    fprintf(fp,"# Reciever meta data\n");
+    fprintf(fp,"# Receiver meta data\n");
     fprintf(fp,"#   + receiver location: x,y %+1.8e %+1.8e\n",xr[0],xr[1]);
-    fprintf(fp,"#   + records displ/velo at requested reciever location through interpolating the FE solution\n");
+    fprintf(fp,"#   + records displ/velo at requested receiver location through interpolating the FE solution\n");
     fprintf(fp,"# Time series header\n");
     fprintf(fp,"#   time ux uy vx vy\n");
   } else {
@@ -2549,9 +2549,9 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_SEQ(SpecFECtx c,PetscReal t
     fp = fopen(filename,"w");
     fprintf(fp,"# SpecFECtx meta data\n");
     fprintf(fp,"#   mx %d : my %d : basis order %d\n",c->mx,c->my,c->basisorder);
-    fprintf(fp,"# Reciever meta data\n");
-    fprintf(fp,"#   + number reciever locations: %d\n",nr);
-    fprintf(fp,"#   + takes displ/velo/accel from basis nearest to requested reciever location\n");
+    fprintf(fp,"# Receiver meta data\n");
+    fprintf(fp,"#   + number receiver locations: %d\n",nr);
+    fprintf(fp,"#   + takes displ/velo/accel from basis nearest to requested receiver location\n");
     for (r=0; r<nr; r++) {
       fprintf(fp,"#   + receiver location [%d]: x,y %+1.8e %+1.8e\n",r,xr[2*r+0],xr[2*r+1]);
       fprintf(fp,"#   +   mapped to nearest node --> %+1.8e %+1.8e\n",LA_c[2*nid_list[r]],LA_c[2*nid_list[r]+1]);
@@ -2669,10 +2669,10 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
     fp = fopen(filename,"w");
     fprintf(fp,"# SpecFECtx meta data\n");
     fprintf(fp,"#   mx %d : my %d : basis order %d\n",c->mx,c->my,c->basisorder);
-    fprintf(fp,"# Reciever meta data\n");
-    fprintf(fp,"#   + number reciever locations: %d\n",nr);
-    fprintf(fp,"#   + number reciever locations <local>: %d\n",nr_local);
-    fprintf(fp,"#   + takes displ/velo/accel from basis nearest to requested reciever location\n");
+    fprintf(fp,"# Receiver meta data\n");
+    fprintf(fp,"#   + number receiver locations: %d\n",nr);
+    fprintf(fp,"#   + number receiver locations <local>: %d\n",nr_local);
+    fprintf(fp,"#   + takes displ/velo/accel from basis nearest to requested receiver location\n");
     for (r=0; r<nr; r++) {
       if (nid_list[r] == -1) { continue; }
       fprintf(fp,"#   + receiver location [%d]: x,y %+1.8e %+1.8e\n",r,xr[2*r+0],xr[2*r+1]);
