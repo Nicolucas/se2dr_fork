@@ -2723,6 +2723,7 @@ PetscErrorCode SeismicSourceEvaluate(PetscReal time,PetscInt nsources,SeismicSou
   PetscFunctionReturn(0);
 }
 
+/* Ricker wavelet source-time function implementation */
 typedef struct {
   PetscReal t0,freq,amp;
 } SeismicSTF_Ricker;
@@ -2735,7 +2736,7 @@ PetscErrorCode SeismicSTFEvaluate_Ricker(SeismicSTF stf,PetscReal time,PetscReal
   arg = PETSC_PI * ctx->freq * (time-ctx->t0);
   arg2 = arg * arg;
   a = 1.0 - 2.0 * arg2;
-  b = exp(-arg2);
+  b = PetscExpReal(-arg2);
   *psi = ctx->amp * a * b;
   
   PetscFunctionReturn(0);
@@ -2765,6 +2766,51 @@ PetscErrorCode SeismicSTFCreate_Ricker(PetscReal t0,PetscReal freq,PetscReal amp
   stf->data = (void*)ricker;
   stf->evaluate = SeismicSTFEvaluate_Ricker;
   stf->destroy = SeismicSTFDestroy_Ricker;
+  
+  *s = stf;
+  PetscFunctionReturn(0);
+}
+
+/* Gaussian source-time function implementation */
+typedef struct {
+  PetscReal t0,omega,amp;
+} SeismicSTF_Gaussian;
+
+PetscErrorCode SeismicSTFEvaluate_Gaussian(SeismicSTF stf,PetscReal time,PetscReal *psi)
+{
+  SeismicSTF_Gaussian *ctx = (SeismicSTF_Gaussian*)stf->data;
+  PetscReal arg;
+  
+  arg = ctx->omega * ctx->omega * (time - ctx->t0) * (time - ctx->t0) * 0.5;
+  *psi = ctx->amp * PetscExpReal( - arg );
+  
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SeismicSTFDestroy_Gaussian(SeismicSTF stf)
+{
+  PetscErrorCode ierr;
+  SeismicSTF_Gaussian *ctx = (SeismicSTF_Gaussian*)stf->data;
+  
+  ierr = PetscFree(ctx);CHKERRQ(ierr);
+  stf->data = NULL;
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SeismicSTFCreate_Gaussian(PetscReal t0,PetscReal omega,PetscReal amp,SeismicSTF *s)
+{
+  PetscErrorCode ierr;
+  SeismicSTF stf;
+  SeismicSTF_Gaussian *gaussian;
+  
+  ierr = SeismicSTFCreate("gaussian",&stf);CHKERRQ(ierr);
+  ierr = PetscMalloc1(1,&gaussian);CHKERRQ(ierr);
+  gaussian->t0    = t0;
+  gaussian->omega = omega;
+  gaussian->amp   = amp;
+  stf->data = (void*)gaussian;
+  stf->evaluate = SeismicSTFEvaluate_Gaussian;
+  stf->destroy = SeismicSTFDestroy_Gaussian;
   
   *s = stf;
   PetscFunctionReturn(0);
