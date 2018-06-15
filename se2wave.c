@@ -2167,40 +2167,41 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
 PetscErrorCode TSExplicitNewmark(Vec u,Vec v,Vec a,Vec Md,Vec f,PetscReal stf[],PetscReal dt,PetscReal alpha,PetscReal beta,PetscReal gamma)
 {
   Vec vi,dv,f_alpha;
+  PetscErrorCode ierr;
   
-  VecDuplicate(u,&vi);
-  VecDuplicate(u,&dv);
-  VecDuplicate(u,&f_alpha);
+  ierr = VecDuplicate(u,&vi);CHKERRQ(ierr);
+  ierr = VecDuplicate(u,&dv);CHKERRQ(ierr);
+  ierr = VecDuplicate(u,&f_alpha);CHKERRQ(ierr);
   
   /* save old velocity */
-  VecCopy(v,vi);
+  ierr = VecCopy(v,vi);CHKERRQ(ierr);
   
   /* rhs */
-  VecCopy(f,f_alpha);
-  VecScale(f_alpha,alpha*stf[1]);
+  ierr = VecCopy(f,f_alpha);CHKERRQ(ierr);
+  ierr = VecScale(f_alpha,alpha*stf[1]);CHKERRQ(ierr);
   if (alpha < 1.0) {
-    VecAXPY(f_alpha,(1-alpha)*stf[0],f);
+    ierr = VecAXPY(f_alpha,(1-alpha)*stf[0],f);CHKERRQ(ierr);
   }
 
   /* solve */
-  VecScale(f_alpha,dt);
-  VecPointwiseDivide(dv,f_alpha,Md);
+  ierr = VecScale(f_alpha,dt);CHKERRQ(ierr);
+  ierr = VecPointwiseDivide(dv,f_alpha,Md);CHKERRQ(ierr);
   
   /* update velocity */
-  VecAXPY(v,1.0,dv); // v_{n+1} = dv + v_{n}
+  ierr = VecAXPY(v,1.0,dv);CHKERRQ(ierr); // v_{n+1} = dv + v_{n}
 
   /* update displacement */
-  VecAXPY(u,dt*(1.0 - beta/gamma),vi);
-  VecAXPY(u,dt*(beta/gamma),v);
-  VecAXPY(u,dt*dt*(0.5 - beta/gamma),a);
+  ierr = VecAXPY(u,dt*(1.0 - beta/gamma),vi);CHKERRQ(ierr);
+  ierr = VecAXPY(u,dt*(beta/gamma),v);CHKERRQ(ierr);
+  ierr = VecAXPY(u,dt*dt*(0.5 - beta/gamma),a);CHKERRQ(ierr);
   
   /* update acceleration */
-  VecScale(a,1.0 - 1.0/gamma);
-  VecAXPY(a,1.0/(gamma*dt),dv);
+  ierr = VecScale(a,1.0 - 1.0/gamma);CHKERRQ(ierr);
+  ierr = VecAXPY(a,1.0/(gamma*dt),dv);CHKERRQ(ierr);
   
-  VecDestroy(&vi);
-  VecDestroy(&dv);
-  VecDestroy(&f_alpha);
+  ierr = VecDestroy(&vi);CHKERRQ(ierr);
+  ierr = VecDestroy(&dv);CHKERRQ(ierr);
+  ierr = VecDestroy(&f_alpha);CHKERRQ(ierr);
   
   PetscFunctionReturn(0);
 }
@@ -2264,8 +2265,8 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
   
   ierr = SpecFECtxSetConstantMaterialProperties_Velocity(ctx,4000.0,2000.0,2600.0);CHKERRQ(ierr); // vp,vs,rho
   
-  DMDASetFieldName(ctx->dm,0,"_x");
-  DMDASetFieldName(ctx->dm,1,"_y");
+  ierr = DMDASetFieldName(ctx->dm,0,"_x");CHKERRQ(ierr);
+  ierr = DMDASetFieldName(ctx->dm,1,"_y");CHKERRQ(ierr);
 
   DMCreateGlobalVector(ctx->dm,&u); PetscObjectSetName((PetscObject)u,"disp");
   DMCreateGlobalVector(ctx->dm,&v); PetscObjectSetName((PetscObject)v,"velo");
@@ -2274,7 +2275,7 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
   DMCreateGlobalVector(ctx->dm,&g);
   DMCreateGlobalVector(ctx->dm,&Md);
 
-  VecZeroEntries(u);
+  ierr = VecZeroEntries(u);CHKERRQ(ierr);
   
   ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,"uva.vts",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
   ierr = VecView(u,viewer);CHKERRQ(ierr);
@@ -2397,12 +2398,12 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
     ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
   }
   
-  VecDestroy(&u);
-  VecDestroy(&v);
-  VecDestroy(&a);
-  VecDestroy(&f);
-  VecDestroy(&Md);
-  VecDestroy(&g);
+  ierr = VecDestroy(&u);CHKERRQ(ierr);
+  ierr = VecDestroy(&v);CHKERRQ(ierr);
+  ierr = VecDestroy(&a);CHKERRQ(ierr);
+  ierr = VecDestroy(&f);CHKERRQ(ierr);
+  ierr = VecDestroy(&Md);CHKERRQ(ierr);
+  ierr = VecDestroy(&g);CHKERRQ(ierr);
 
   
   PetscFunctionReturn(0);
@@ -2443,8 +2444,8 @@ PetscErrorCode specfem_ex2(PetscInt mx,PetscInt my)
   
   ierr = SpecFECtxSetConstantMaterialProperties_Velocity(ctx,3200.0,1847.5,2000.0);CHKERRQ(ierr); // vp,vs,rho
   
-  DMDASetFieldName(ctx->dm,0,"_x");
-  DMDASetFieldName(ctx->dm,1,"_y");
+  ierr = DMDASetFieldName(ctx->dm,0,"_x");CHKERRQ(ierr);
+  ierr = DMDASetFieldName(ctx->dm,1,"_y");CHKERRQ(ierr);
   
   DMCreateGlobalVector(ctx->dm,&u); PetscObjectSetName((PetscObject)u,"disp");
   DMCreateGlobalVector(ctx->dm,&v); PetscObjectSetName((PetscObject)v,"velo");
@@ -2453,7 +2454,7 @@ PetscErrorCode specfem_ex2(PetscInt mx,PetscInt my)
   DMCreateGlobalVector(ctx->dm,&g); PetscObjectSetName((PetscObject)g,"g");
   DMCreateGlobalVector(ctx->dm,&Md);
   
-  VecZeroEntries(u);
+  ierr = VecZeroEntries(u);CHKERRQ(ierr);
   
   ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,"uva.vts",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
   ierr = VecView(u,viewer);CHKERRQ(ierr);
@@ -2573,12 +2574,12 @@ PetscErrorCode specfem_ex2(PetscInt mx,PetscInt my)
     ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
   }
   
-  VecDestroy(&u);
-  VecDestroy(&v);
-  VecDestroy(&a);
-  VecDestroy(&f);
-  VecDestroy(&Md);
-  VecDestroy(&g);
+  ierr = VecDestroy(&u);CHKERRQ(ierr);
+  ierr = VecDestroy(&v);CHKERRQ(ierr);
+  ierr = VecDestroy(&a);CHKERRQ(ierr);
+  ierr = VecDestroy(&f);CHKERRQ(ierr);
+  ierr = VecDestroy(&Md);CHKERRQ(ierr);
+  ierr = VecDestroy(&g);CHKERRQ(ierr);
   
   PetscFunctionReturn(0);
 }
@@ -2608,8 +2609,8 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
   
   ierr = SpecFECtxSetConstantMaterialProperties_Velocity(ctx,4746.3670317412243 ,2740.2554625435928, 1000.0);CHKERRQ(ierr); // vp,vs,rho
   
-  DMDASetFieldName(ctx->dm,0,"_x");
-  DMDASetFieldName(ctx->dm,1,"_y");
+  ierr = DMDASetFieldName(ctx->dm,0,"_x");CHKERRQ(ierr);
+  ierr = DMDASetFieldName(ctx->dm,1,"_y");CHKERRQ(ierr);
   
   DMCreateGlobalVector(ctx->dm,&u); PetscObjectSetName((PetscObject)u,"disp");
   DMCreateGlobalVector(ctx->dm,&v); PetscObjectSetName((PetscObject)v,"velo");
@@ -2618,7 +2619,7 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
   DMCreateGlobalVector(ctx->dm,&g); PetscObjectSetName((PetscObject)g,"g");
   DMCreateGlobalVector(ctx->dm,&Md);
   
-  VecZeroEntries(u);
+  ierr = VecZeroEntries(u);CHKERRQ(ierr);
   
   ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,"uva.vts",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
   ierr = VecView(u,viewer);CHKERRQ(ierr);
@@ -2762,12 +2763,12 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
     ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
   }
   
-  VecDestroy(&u);
-  VecDestroy(&v);
-  VecDestroy(&a);
-  VecDestroy(&f);
-  VecDestroy(&Md);
-  VecDestroy(&g);
+  ierr = VecDestroy(&u);CHKERRQ(ierr);
+  ierr = VecDestroy(&v);CHKERRQ(ierr);
+  ierr = VecDestroy(&a);CHKERRQ(ierr);
+  ierr = VecDestroy(&f);CHKERRQ(ierr);
+  ierr = VecDestroy(&Md);CHKERRQ(ierr);
+  ierr = VecDestroy(&g);CHKERRQ(ierr);
   
   PetscFunctionReturn(0);
 }
@@ -2802,8 +2803,8 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
   
   ierr = SpecFECtxSetConstantMaterialProperties_Velocity(ctx,4746.3670317412243 ,2740.2554625435928, 1000.0);CHKERRQ(ierr); // vp,vs,rho
   
-  DMDASetFieldName(ctx->dm,0,"_x");
-  DMDASetFieldName(ctx->dm,1,"_y");
+  ierr = DMDASetFieldName(ctx->dm,0,"_x");CHKERRQ(ierr);
+  ierr = DMDASetFieldName(ctx->dm,1,"_y");CHKERRQ(ierr);
   
   DMCreateGlobalVector(ctx->dm,&u); PetscObjectSetName((PetscObject)u,"disp");
   DMCreateGlobalVector(ctx->dm,&v); PetscObjectSetName((PetscObject)v,"velo");
@@ -2812,7 +2813,7 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
   DMCreateGlobalVector(ctx->dm,&g); PetscObjectSetName((PetscObject)g,"g");
   DMCreateGlobalVector(ctx->dm,&Md);
   
-  VecZeroEntries(u);
+  ierr = VecZeroEntries(u);CHKERRQ(ierr);
   
   ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,"uva.vts",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
   ierr = VecView(u,viewer);CHKERRQ(ierr);
@@ -2961,12 +2962,12 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
     ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
   }
   
-  VecDestroy(&u);
-  VecDestroy(&v);
-  VecDestroy(&a);
-  VecDestroy(&f);
-  VecDestroy(&Md);
-  VecDestroy(&g);
+  ierr = VecDestroy(&u);CHKERRQ(ierr);
+  ierr = VecDestroy(&v);CHKERRQ(ierr);
+  ierr = VecDestroy(&a);CHKERRQ(ierr);
+  ierr = VecDestroy(&f);CHKERRQ(ierr);
+  ierr = VecDestroy(&Md);CHKERRQ(ierr);
+  ierr = VecDestroy(&g);CHKERRQ(ierr);
   
   PetscFunctionReturn(0);
 }
