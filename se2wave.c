@@ -893,7 +893,7 @@ PetscErrorCode SpecFECtxGetCornerBasis_MPI(SpecFECtx c,PetscInt *si,PetscInt *si
   PetscErrorCode ierr;
 
   ierr = DMDAGetGhostCorners(c->dm,&gi,&gj,NULL,&m,&n,NULL);CHKERRQ(ierr);
-  printf("rank %d: gi,gj %d %d  npe %d\n",c->rank,gi,gj,c->npe_1d);
+  /*printf("rank %d: gi,gj %d %d  npe %d\n",c->rank,gi,gj,c->npe_1d);*/
   for (k=0; k<m; k++) {
     if (((gi+k) % (c->npe_1d-1)) == 0) {
       *si = k;
@@ -923,7 +923,7 @@ PetscErrorCode SpecFECtxCreateENMap2d_MPI(SpecFECtx c)
   
   ierr = SpecFECtxGetCornerBasis_MPI(c,&si,&si_g,&sj,&sj_g);CHKERRQ(ierr);
   ierr = DMDAGetGhostCorners(c->dm,NULL,NULL,NULL,&nx_local,NULL,NULL);CHKERRQ(ierr);
-  printf("rank %d : %d %d x %d %d\n",c->rank,si,si_g,sj,sj_g);
+  /*printf("rank %d : %d %d x %d %d\n",c->rank,si,si_g,sj,sj_g);*/
   
   ecnt = 0;
   for (ej=0; ej<c->my; ej++) {
@@ -964,7 +964,9 @@ PetscErrorCode SpecFECtxCreateMeshCoords2d_MPI(SpecFECtx c)
   ierr = DMDASetUniformCoordinates(c->dm,0.0,1.0,0.0,1.0,0,0);CHKERRQ(ierr);
   ierr = DMGetCoordinateDM(c->dm,&cdm);CHKERRQ(ierr);
   ierr = DMGetCoordinatesLocal(c->dm,&coor);CHKERRQ(ierr);
+
   ierr = DMGetCoordinates(c->dm,&gcoor);CHKERRQ(ierr);
+  ierr = VecZeroEntries(gcoor);CHKERRQ(ierr);
   
   ierr = SpecFECtxGetCornerBasis_MPI(c,&si,&si_g,&sj,&sj_g);CHKERRQ(ierr);
   ierr = DMDAGetGhostCorners(c->dm,&gi,&gj,NULL,&m,&n,NULL);CHKERRQ(ierr);
@@ -984,29 +986,24 @@ PetscErrorCode SpecFECtxCreateMeshCoords2d_MPI(SpecFECtx c)
       ni0 = si + ei*(c->npe_1d-1);
       nj0 = sj + ej*(c->npe_1d-1);
       
-      printf("rank %d : (%d,%d) -> %d %d  %+1.4e %+1.4e\n",c->rank,ei,ej,ni0,nj0,x0,y0);
+      //printf("rank %d : (%d,%d) -> %d %d  %+1.4e %+1.4e\n",c->rank,ei,ej,ni0,nj0,x0,y0);
       
       for (j=0; j<c->npe_1d; j++) {
         for (i=0; i<c->npe_1d; i++) {
-          if ( (ni0+i)+(nj0+j)*m >= m*n) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"Out of range");
+          if ( (ni0+i)+(nj0+j)*m >= m*n) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"Local index out of range");
+
           LA_coor[2*((ni0+i) + (nj0+j)*m)+0] = x0 + 0.5*(c->xi1d[i]+1.0)*dx;
           LA_coor[2*((ni0+i) + (nj0+j)*m)+1] = y0 + 0.5*(c->xi1d[j]+1.0)*dy;
           
-          
-          VecSetValueLocal(gcoor,2*((ni0+i) + (nj0+j)*m)+0,x0 + 0.5*(c->xi1d[i]+1.0)*dx,INSERT_VALUES);
-          VecSetValueLocal(gcoor,2*((ni0+i) + (nj0+j)*m)+1,y0 + 0.5*(c->xi1d[j]+1.0)*dy,INSERT_VALUES);
+          ierr = VecSetValueLocal(gcoor,2*((ni0+i) + (nj0+j)*m)+0,x0 + 0.5*(c->xi1d[i]+1.0)*dx,INSERT_VALUES);CHKERRQ(ierr);
+          ierr = VecSetValueLocal(gcoor,2*((ni0+i) + (nj0+j)*m)+1,y0 + 0.5*(c->xi1d[j]+1.0)*dy,INSERT_VALUES);CHKERRQ(ierr);
         }
       }
     }
   }
   ierr = VecRestoreArray(coor,&LA_coor);CHKERRQ(ierr);
-  //VecView(coor,PETSC_VIEWER_STDOUT_SELF);
-  VecAssemblyBegin(gcoor);
-  VecAssemblyEnd(gcoor);
-  
-  //ierr = VecZeroEntries(gcoor);CHKERRQ(ierr);
-  //ierr = DMLocalToGlobalBegin(c->dm,coor,ADD_VALUES,gcoor);CHKERRQ(ierr);
-  //ierr = DMLocalToGlobalEnd(c->dm,coor,ADD_VALUES,gcoor);CHKERRQ(ierr);
+  ierr = VecAssemblyBegin(gcoor);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(gcoor);CHKERRQ(ierr);
 
   PetscFunctionReturn(0);
 }
@@ -1043,7 +1040,7 @@ PetscErrorCode SpecFECtxCreateMesh_MPI(SpecFECtx c,PetscInt dim,PetscInt mx,Pets
     ierr = DMDACreate2d(PETSC_COMM_WORLD,DM_BOUNDARY_NONE,DM_BOUNDARY_NONE,DMDA_STENCIL_BOX,
                         c->mx_g,c->my_g,PETSC_DECIDE,PETSC_DECIDE,1,0,NULL,NULL,&dm_ref);CHKERRQ(ierr);
     ierr = DMSetUp(dm_ref);CHKERRQ(ierr);
-    DMView(dm_ref,PETSC_VIEWER_STDOUT_WORLD);
+    /*ierr = DMView(dm_ref,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr); */
 
     ierr = DMDAGetInfo(dm_ref,NULL,NULL,NULL,NULL,&ranks[0],&ranks[1],NULL,NULL,NULL,NULL,NULL,NULL,NULL);CHKERRQ(ierr);
     ierr = DMDAGetOwnershipRanges(dm_ref,&lx_ref,&ly_ref,NULL);CHKERRQ(ierr);
@@ -1053,26 +1050,26 @@ PetscErrorCode SpecFECtxCreateMesh_MPI(SpecFECtx c,PetscInt dim,PetscInt mx,Pets
     c->my = info.ym;
     c->ne = c->mx * c->my;
     
-    PetscMalloc1(ranks[0],&lx);
-    PetscMalloc1(ranks[1],&ly);
+    ierr = PetscMalloc1(ranks[0],&lx);CHKERRQ(ierr);
+    ierr = PetscMalloc1(ranks[1],&ly);CHKERRQ(ierr);
     for (r=0; r<ranks[0]; r++) {
       lx[r] = lx_ref[r] * (c->npe_1d - 1);
     }
     lx[ranks[0]-1]++;
 
-    for (r=0; r<ranks[0]; r++)  PetscPrintf(PETSC_COMM_WORLD,"npoints-i[%D] %D \n",r,lx[r]);
+    /*for (r=0; r<ranks[0]; r++)  PetscPrintf(PETSC_COMM_WORLD,"npoints-i[%D] %D \n",r,lx[r]);*/
     
     for (r=0; r<ranks[1]; r++) {
       ly[r] = ly_ref[r] * (c->npe_1d - 1);
     }
     ly[ranks[1]-1]++;
     
-    for (r=0; r<ranks[1]; r++)  PetscPrintf(PETSC_COMM_WORLD,"npoints-j[%D] %D \n",r,ly[r]);
+    /*for (r=0; r<ranks[1]; r++)  PetscPrintf(PETSC_COMM_WORLD,"npoints-j[%D] %D \n",r,ly[r]);*/
     
     ierr = DMDACreate2d(PETSC_COMM_WORLD,DM_BOUNDARY_NONE,DM_BOUNDARY_NONE,DMDA_STENCIL_BOX,
                         c->nx_g,c->ny_g,ranks[0],ranks[1],ndofs,stencil_width,lx,ly,&c->dm);CHKERRQ(ierr);
     ierr = DMSetUp(c->dm);CHKERRQ(ierr);
-    DMView(c->dm,PETSC_VIEWER_STDOUT_WORLD);
+    /*ierr = DMView(c->dm,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr); */
 
     ierr = SpecFECtxCreateENMap2d_MPI(c);CHKERRQ(ierr);
     ierr = SpecFECtxCreateMeshCoords2d_MPI(c);CHKERRQ(ierr);
@@ -1088,6 +1085,8 @@ PetscErrorCode SpecFECtxCreateMesh_MPI(SpecFECtx c,PetscInt dim,PetscInt mx,Pets
     ierr = TabulateBasisDerivativesTensorProduct2d(basisorder,&c->dN_dxi,&c->dN_deta);CHKERRQ(ierr);
     ierr = TabulateBasisDerivativesTensorProduct2d(basisorder,&c->dN_dx,&c->dN_dy);CHKERRQ(ierr);
     
+    ierr = PetscFree(lx);CHKERRQ(ierr);
+    ierr = PetscFree(ly);CHKERRQ(ierr);
     ierr = DMDestroy(&dm_ref);CHKERRQ(ierr);
     break;
   }
@@ -3878,7 +3877,7 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,"uva.vts",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
   ierr = VecView(u,viewer);CHKERRQ(ierr);
   ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
-  exit(0);
+  return(0);
   
   ierr = AssembleBilinearForm_Mass2d(ctx,Md);CHKERRQ(ierr);
   
