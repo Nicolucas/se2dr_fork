@@ -45,7 +45,7 @@ struct _p_SpecFECtx {
   PetscReal *elbuf_coor,*elbuf_field,*elbuf_field2;
   PetscInt  *elbuf_dofs;
   PetscInt nqp;
-  QPntIsotropicElastic *qp_data;
+  QPntIsotropicElastic *cell_data;
   PetscReal **dN_dxi,**dN_deta;
   PetscReal **dN_dx,**dN_dy;
   PetscInt  source_implementation;
@@ -813,8 +813,8 @@ PetscErrorCode SpecFECtxCreateMesh(SpecFECtx c,PetscInt dim,PetscInt mx,PetscInt
   
   c->nqp = c->npe;
   
-  ierr = PetscMalloc(sizeof(QPntIsotropicElastic)*c->nqp*c->ne,&c->qp_data);CHKERRQ(ierr);
-  ierr = PetscMemzero(c->qp_data,sizeof(QPntIsotropicElastic)*c->nqp*c->ne);CHKERRQ(ierr);
+  ierr = PetscMalloc(sizeof(QPntIsotropicElastic)*c->ne,&c->cell_data);CHKERRQ(ierr);
+  ierr = PetscMemzero(c->cell_data,sizeof(QPntIsotropicElastic)*c->ne);CHKERRQ(ierr);
   
   ierr = PetscMalloc(sizeof(PetscReal)*c->npe*c->dim,&c->elbuf_coor);CHKERRQ(ierr);
   ierr = PetscMalloc(sizeof(PetscReal)*c->npe*c->dofs,&c->elbuf_field);CHKERRQ(ierr);
@@ -828,10 +828,10 @@ PetscErrorCode SpecFECtxSetConstantMaterialProperties(SpecFECtx c,PetscReal lamb
 {
   PetscInt q;
   
-  for (q=0; q<c->nqp*c->ne; q++) {
-    c->qp_data[q].lambda = lambda;
-    c->qp_data[q].mu     = mu;
-    c->qp_data[q].rho    = rho;
+  for (q=0; q<c->ne; q++) {
+    c->cell_data[q].lambda = lambda;
+    c->cell_data[q].mu     = mu;
+    c->cell_data[q].rho    = rho;
   }
   
   PetscFunctionReturn(0);
@@ -909,6 +909,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics2d(SpecFECtx c,Vec u,Vec F)
   PetscReal *fe,*ux,*uy,*elcoords,detJ,*field;
   Vec       coor;
   const PetscReal *LA_coor,*LA_u;
+  QPntIsotropicElastic *celldata;
   
   ierr = VecZeroEntries(F);CHKERRQ(ierr);
   
@@ -962,15 +963,14 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics2d(SpecFECtx c,Vec u,Vec F)
     
     ierr = PetscMemzero(fe,sizeof(PetscReal)*nbasis*ndof);CHKERRQ(ierr);
     
+    /* get access to element->quadrature points */
+    celldata = &c->cell_data[e];
+    
     for (q=0; q<c->nqp; q++) {
       PetscReal            fac;
       PetscReal            c11,c12,c21,c22,c33,lambda_qp,mu_qp;
-      QPntIsotropicElastic *qpdata;
       PetscReal            *dNidx,*dNidy;
       
-      
-      /* get access to element->quadrature points */
-      qpdata = &c->qp_data[e*c->nqp];
       
       dNidx = c->dN_dx[q];
       dNidy = c->dN_dy[q];
@@ -989,8 +989,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics2d(SpecFECtx c,Vec u,Vec F)
       }
       
       /* evaluate constitutive model */
-      lambda_qp  = qpdata[q].lambda;
-      mu_qp      = qpdata[q].mu;
+      lambda_qp  = celldata->lambda;
+      mu_qp      = celldata->mu;
       
       /*
        coeff = E_qp * (1.0 + nu_qp)/(1.0 - 2.0*nu_qp);
@@ -1043,6 +1043,7 @@ PetscErrorCode AssembleBilinearForm_Mass2d(SpecFECtx c,Vec A)
   PetscReal *elcoords,*Me,detJ;
   Vec       coor;
   const PetscReal *LA_coor;
+  QPntIsotropicElastic *celldata;
   
   ierr = VecZeroEntries(A);CHKERRQ(ierr);
   
@@ -1076,16 +1077,15 @@ PetscErrorCode AssembleBilinearForm_Mass2d(SpecFECtx c,Vec A)
     
     ElementEvaluateGeometry_CellWiseConstant2d(nbasis,elcoords,c->npe_1d,&detJ);
     
+    /* get access to element->quadrature points */
+    celldata = &c->cell_data[e];
+
     for (q=0; q<nbasis; q++) {
       PetscReal            fac,Me_ii;
-      QPntIsotropicElastic *qpdata;
-      
-      /* get access to element->quadrature points */
-      qpdata = &c->qp_data[e*c->nqp];
       
       fac = detJ * c->w[q];
       
-      Me_ii = fac * (qpdata[q].rho);
+      Me_ii = fac * (celldata->rho);
       
       /* \int u0v0 dV */
       index = 2*q;
@@ -1883,6 +1883,7 @@ PetscErrorCode ElastoDynamicsComputeTimeStep_2d(SpecFECtx ctx,PetscReal *_dt)
   QPntIsotropicElastic *qpdata;
   PetscReal gmin[3],gmax[3],min_el_r,dx,dy;
   PetscErrorCode ierr;
+  QPntIsotropicElastic *celldata;
   
   *_dt = PETSC_MAX_REAL;
   dt_min = PETSC_MAX_REAL;
@@ -1905,14 +1906,14 @@ PetscErrorCode ElastoDynamicsComputeTimeStep_2d(SpecFECtx ctx,PetscReal *_dt)
     max_el_Vp = PETSC_MIN_REAL;
     
     /* get access to element->quadrature points */
-    qpdata = &ctx->qp_data[e*ctx->nqp];
+    celldata = &ctx->cell_data[e];
     
     for (q=0; q<ctx->nqp; q++) {
       PetscReal qp_rho,qp_mu,qp_lambda,qp_Vp;
       
-      qp_rho    = qpdata[q].rho;
-      qp_mu     = qpdata[q].mu;
-      qp_lambda = qpdata[q].lambda;
+      qp_rho    = celldata->rho;
+      qp_mu     = celldata->mu;
+      qp_lambda = celldata->lambda;
       
       ierr = ElastoDynamicsConvertLame2Velocity(qp_rho,qp_mu,qp_lambda,0,&qp_Vp);CHKERRQ(ierr);
       
