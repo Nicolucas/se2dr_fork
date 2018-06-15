@@ -64,7 +64,7 @@ PetscErrorCode CreateGLLCoordsWeights(PetscInt N,PetscInt *_npoints,PetscReal **
   
   // Truncation + 1
   N1 = N + 1;
-
+  
   ierr = PetscMalloc(sizeof(PetscReal)*N1,&xold);CHKERRQ(ierr);
   ierr = PetscMalloc(sizeof(PetscReal)*N1,&x);CHKERRQ(ierr);
   ierr = PetscMalloc(sizeof(PetscReal)*N1,&w);CHKERRQ(ierr);
@@ -137,7 +137,7 @@ PetscErrorCode CreateGLLCoordsWeights(PetscInt N,PetscInt *_npoints,PetscReal **
     /* flip order so they are ordered from -1 to 1 */
     for (i=0; i<N1/2; i++) {
       PetscReal tmp;
-
+      
       tmp = x[i];
       x[i] = x[N1-1-i];
       x[N1-1-i] = tmp;
@@ -146,7 +146,7 @@ PetscErrorCode CreateGLLCoordsWeights(PetscInt N,PetscInt *_npoints,PetscReal **
   } else {
     ierr = PetscFree(x);CHKERRQ(ierr);
   }
-
+  
   if (_npoints) {
     *_npoints = N1;
   }
@@ -157,7 +157,7 @@ PetscErrorCode CreateGLLCoordsWeights(PetscInt N,PetscInt *_npoints,PetscReal **
   }
   ierr = PetscFree(xold);CHKERRQ(ierr);
   ierr = PetscFree(P);CHKERRQ(ierr);
-
+  
   PetscFunctionReturn(0);
 }
 
@@ -306,14 +306,14 @@ PetscErrorCode TabulateBasis1d_CLEGENDRE(PetscInt npoints,PetscReal xi[],PetscIn
         Ni[p][i] = 0.0;
       }
     }
-
+    
     /*
-    printf("p = %d (xi = %+1.4e) N = [",p,xi[p]);
-    for (i=0; i<nbasis; i++) {
-      printf(" %+1.4e ",Ni[p][i]);
-    }
-    printf("]\n");
-    */
+     printf("p = %d (xi = %+1.4e) N = [",p,xi[p]);
+     for (i=0; i<nbasis; i++) {
+     printf(" %+1.4e ",Ni[p][i]);
+     }
+     printf("]\n");
+     */
   }
   
   //for (p=0; p<npoints; p++) {
@@ -430,9 +430,9 @@ PetscErrorCode TabulateBasisDerivatives1d_CLEGENDRE(PetscInt npoints,PetscReal x
       
       if (i == 0) {
         dm_dx = 0.0;
-      } else {
-        dm_dx = ((double)i)*pow((double)xi[p],(double)(i-1));
-      }
+        } else {
+          dm_dx = ((double)i)*pow((double)xi[p],(double)(i-1));
+        }
       
       monomials[cnt] = dm_dx;
       cnt++;
@@ -450,12 +450,12 @@ PetscErrorCode TabulateBasisDerivatives1d_CLEGENDRE(PetscInt npoints,PetscReal x
     }
     
     /*
-    printf("p = %d (xi = %+1.4e) dN_dx = [",p,xi[p]);
-    for (i=0; i<nbasis; i++) {
-      printf(" %+1.4e ",GNix[p][i]);
-    }
-    printf("]\n");
-    */
+     printf("p = %d (xi = %+1.4e) dN_dx = [",p,xi[p]);
+     for (i=0; i<nbasis; i++) {
+     printf(" %+1.4e ",GNix[p][i]);
+     }
+     printf("]\n");
+     */
   }
   
   ierr = PetscFree(monomials);CHKERRQ(ierr);
@@ -483,7 +483,7 @@ PetscErrorCode TabulateBasisDerivativesTensorProduct2d(PetscInt order,PetscReal 
   
   ierr = CreateGLLCoordsWeights(order,&nqp,&xiq,NULL);CHKERRQ(ierr);
   ierr = TabulateBasisDerivatives1d_CLEGENDRE(nqp,xiq,order,&nbasis,&dphi_xi);CHKERRQ(ierr);
-
+  
   ierr = PetscMalloc(sizeof(PetscReal*)*nqp*nqp,&dN_dxi);CHKERRQ(ierr);
   ierr = PetscMalloc(sizeof(PetscReal*)*nqp*nqp,&dN_deta);CHKERRQ(ierr);
   for (i=0; i<nqp*nqp; i++) {
@@ -494,7 +494,7 @@ PetscErrorCode TabulateBasisDerivativesTensorProduct2d(PetscInt order,PetscReal 
   qpoint = 0;
   for (qj=0; qj<nqp; qj++) {
     for (qi=0; qi<nqp; qi++) {
-    
+      
       k = 0;
       for (j=0; j<nbasis; j++) {
         for (i=0; i<nbasis; i++) {
@@ -502,32 +502,32 @@ PetscErrorCode TabulateBasisDerivativesTensorProduct2d(PetscInt order,PetscReal 
           
           phi_xi = 0.0;
           if (qi == i) phi_xi = 1.0;
-
+          
           phi_eta = 0.0;
           if (qj == j) phi_eta = 1.0;
           
           dN_dxi[qpoint][k]  = dphi_xi[qi][i] * phi_eta;
           dN_deta[qpoint][k] = phi_xi * dphi_xi[qj][j];
-
+          
           k++;
-      }}
+        }}
       qpoint++;
-  }}
+    }}
   
   /* viewer */
   /*
-  for (k=0; k<nqp*nqp; k++) {
-    printf("qp[%d]: dNdxi  = [ ",k);
-    for (j=0; j<nbasis*nbasis; j++) {
-      printf(" %+1.4e ",dN_dxi[k][j]);
-    } printf("]\n");
-
-    printf("qp[%d]: dNdeta = [ ",k);
-    for (j=0; j<nbasis*nbasis; j++) {
-      printf(" %+1.4e ",dN_deta[k][j]);
-    } printf("]\n");
-  }
-  */
+   for (k=0; k<nqp*nqp; k++) {
+   printf("qp[%d]: dNdxi  = [ ",k);
+   for (j=0; j<nbasis*nbasis; j++) {
+   printf(" %+1.4e ",dN_dxi[k][j]);
+   } printf("]\n");
+   
+   printf("qp[%d]: dNdeta = [ ",k);
+   for (j=0; j<nbasis*nbasis; j++) {
+   printf(" %+1.4e ",dN_deta[k][j]);
+   } printf("]\n");
+   }
+   */
   
   /* free up mempry */
   ierr = PetscFree(xiq);CHKERRQ(ierr);
@@ -543,7 +543,7 @@ PetscErrorCode TabulateBasisDerivativesTensorProduct2d(PetscInt order,PetscReal 
     }
     ierr = PetscFree(dN_dxi);CHKERRQ(ierr);
   }
-
+  
   if (_dN_deta) { *_dN_deta = dN_deta; }
   else {
     for (k=0; k<nqp*nqp; k++) {
@@ -595,18 +595,18 @@ PetscErrorCode TabulateBasisDerivativesAtPointTensorProduct2d(PetscReal xiq[],Pe
   
   /* viewer */
   /*
-  for (k=0; k<nqp; k++) {
-    printf("qp[%d]: dNdxi  = [ ",k);
-    for (j=0; j<nbasis*nbasis; j++) {
-      printf(" %+1.4e ",dN_dxi[k][j]);
-    } printf("]\n");
-    
-    printf("qp[%d]: dNdeta = [ ",k);
-    for (j=0; j<nbasis*nbasis; j++) {
-      printf(" %+1.4e ",dN_deta[k][j]);
-    } printf("]\n");
-  }
-  */
+   for (k=0; k<nqp; k++) {
+   printf("qp[%d]: dNdxi  = [ ",k);
+   for (j=0; j<nbasis*nbasis; j++) {
+   printf(" %+1.4e ",dN_dxi[k][j]);
+   } printf("]\n");
+   
+   printf("qp[%d]: dNdeta = [ ",k);
+   for (j=0; j<nbasis*nbasis; j++) {
+   printf(" %+1.4e ",dN_deta[k][j]);
+   } printf("]\n");
+   }
+   */
   
   /* free up mempry */
   for (k=0; k<nqp; k++) {
@@ -661,24 +661,24 @@ PetscErrorCode SpecFECtxCreateENMap2d(SpecFECtx c)
   
   ierr = PetscMalloc(sizeof(PetscInt)*c->ne*c->npe,&c->element);CHKERRQ(ierr);
   ierr = PetscMemzero(c->element,sizeof(PetscInt)*c->ne*c->npe);CHKERRQ(ierr);
-
+  
   ecnt = 0;
   for (ej=0; ej<c->my; ej++) {
     nj0 = ej*(c->npe_1d-1);
-
+    
     for (ei=0; ei<c->mx; ei++) {
       ni0 = ei*(c->npe_1d-1);
-    
+      
       emap = &c->element[c->npe*ecnt];
       
       for (j=0; j<c->npe_1d; j++) {
         for (i=0; i<c->npe_1d; i++) {
-        
+          
           nid = (ni0 + i) + (nj0 + j) * c->nx;
           emap[i+j*c->npe_1d] = nid;
         }
       }
-     
+      
       ecnt++;
     }
   }
@@ -704,7 +704,7 @@ PetscErrorCode SpecFECtxCreateMeshCoords2d(SpecFECtx c)
   dy = 1.0/((PetscReal)c->my);
   ierr = DMDAVecGetArray(cdm,coor,&LA_coor2d);CHKERRQ(ierr);
   for (ej=0; ej<c->my; ej++) {
-
+    
     for (ei=0; ei<c->mx; ei++) {
       x0 = 0.0 + ei*dx;
       y0 = 0.0 + ej*dy;
@@ -745,7 +745,7 @@ PetscErrorCode SpecFECtxScaleMeshCoords(SpecFECtx c,PetscReal scale[],PetscReal 
     Vec ss;
     
     ierr = VecDuplicate(coor,&ss);CHKERRQ(ierr);
-
+    
     if (c->dim >= 1) {
       ierr = VecZeroEntries(ss);CHKERRQ(ierr);
       ierr = VecStrideSet(ss,0,shift[0]);CHKERRQ(ierr);
@@ -771,7 +771,7 @@ PetscErrorCode SpecFECtxCreateMesh(SpecFECtx c,PetscInt dim,PetscInt mx,PetscInt
 {
   PetscErrorCode ierr;
   PetscInt stencil_width,i,j;
-
+  
   c->dim = dim;
   c->mx = mx;
   c->my = my;
@@ -782,35 +782,35 @@ PetscErrorCode SpecFECtxCreateMesh(SpecFECtx c,PetscInt dim,PetscInt mx,PetscInt
   c->nx = basisorder*mx + 1;
   c->ny = basisorder*my + 1;
   c->nz = basisorder*mz + 1;
-
+  
   ierr = CreateGLLCoordsWeights(basisorder,&c->npe_1d,&c->xi1d,&c->w1d);CHKERRQ(ierr);
   
   stencil_width = 1;
   switch (dim) {
     case 2:
-      c->npe = c->npe_1d * c->npe_1d;
-      c->ne = mx * my;
-
-      ierr = DMDACreate2d(PETSC_COMM_WORLD,DM_BOUNDARY_NONE,DM_BOUNDARY_NONE,DMDA_STENCIL_BOX,
-                          c->nx,c->ny,PETSC_DECIDE,PETSC_DECIDE,ndofs,stencil_width,NULL,NULL,&c->dm);CHKERRQ(ierr);
-      ierr = DMSetUp(c->dm);CHKERRQ(ierr);
-      ierr = SpecFECtxCreateENMap2d(c);CHKERRQ(ierr);
-      ierr = SpecFECtxCreateMeshCoords2d(c);CHKERRQ(ierr);
-
-      /* tensor product for weights */
-      ierr = PetscMalloc(sizeof(PetscReal)*c->npe,&c->w);CHKERRQ(ierr);
-      for (j=0; j<c->npe_1d; j++) {
-        for (i=0; i<c->npe_1d; i++) {
-          c->w[i+j*c->npe_1d] = c->w1d[i] * c->w1d[j];
-        }
+    c->npe = c->npe_1d * c->npe_1d;
+    c->ne = mx * my;
+    
+    ierr = DMDACreate2d(PETSC_COMM_WORLD,DM_BOUNDARY_NONE,DM_BOUNDARY_NONE,DMDA_STENCIL_BOX,
+                        c->nx,c->ny,PETSC_DECIDE,PETSC_DECIDE,ndofs,stencil_width,NULL,NULL,&c->dm);CHKERRQ(ierr);
+    ierr = DMSetUp(c->dm);CHKERRQ(ierr);
+    ierr = SpecFECtxCreateENMap2d(c);CHKERRQ(ierr);
+    ierr = SpecFECtxCreateMeshCoords2d(c);CHKERRQ(ierr);
+    
+    /* tensor product for weights */
+    ierr = PetscMalloc(sizeof(PetscReal)*c->npe,&c->w);CHKERRQ(ierr);
+    for (j=0; j<c->npe_1d; j++) {
+      for (i=0; i<c->npe_1d; i++) {
+        c->w[i+j*c->npe_1d] = c->w1d[i] * c->w1d[j];
       }
-      
-      ierr = TabulateBasisDerivativesTensorProduct2d(basisorder,&c->dN_dxi,&c->dN_deta);CHKERRQ(ierr);
-      ierr = TabulateBasisDerivativesTensorProduct2d(basisorder,&c->dN_dx,&c->dN_dy);CHKERRQ(ierr);
-      
-      break;
+    }
+    
+    ierr = TabulateBasisDerivativesTensorProduct2d(basisorder,&c->dN_dxi,&c->dN_deta);CHKERRQ(ierr);
+    ierr = TabulateBasisDerivativesTensorProduct2d(basisorder,&c->dN_dx,&c->dN_dy);CHKERRQ(ierr);
+    
+    break;
   }
-
+  
   c->nqp = c->npe;
   
   ierr = PetscMalloc(sizeof(QPntIsotropicElastic)*c->nqp*c->ne,&c->qp_data);CHKERRQ(ierr);
@@ -854,12 +854,12 @@ PetscErrorCode SpecFECtxSetConstantMaterialProperties_Velocity(SpecFECtx c,Petsc
 }
 
 void ElementEvaluateGeometry_CellWiseConstant2d(PetscInt npe,PetscReal el_coords[],
-                                PetscInt nbasis,PetscReal *detJ)
+                                                PetscInt nbasis,PetscReal *detJ)
 {
-	PetscInt i,j;
-	PetscReal J00,J11;
+  PetscInt i,j;
+  PetscReal J00,J11;
   PetscReal dx,dy;
-
+  
   dx = el_coords[2*(nbasis-1)+0] - el_coords[2*0+0];
   dy = el_coords[2*(npe-1)+1]    - el_coords[2*0+1];
   
@@ -870,11 +870,11 @@ void ElementEvaluateGeometry_CellWiseConstant2d(PetscInt npe,PetscReal el_coords
 }
 
 void ElementEvaluateDerivatives_CellWiseConstant2d(PetscInt nqp,PetscInt npe,PetscReal el_coords[],
-                                   PetscInt nbasis,PetscReal **dN_dxi,PetscReal **dN_deta,
-                                   PetscReal **dN_dx,PetscReal **dN_dy)
+                                                   PetscInt nbasis,PetscReal **dN_dxi,PetscReal **dN_deta,
+                                                   PetscReal **dN_dx,PetscReal **dN_dy)
 {
-	PetscInt k,q;
-	PetscReal J00,J11,iJ00,iJ11;
+  PetscInt k,q;
+  PetscReal J00,J11,iJ00,iJ11;
   PetscReal dx,dy;
   
   dx = el_coords[2*(nbasis-1)+0] - el_coords[2*0+0];
@@ -882,17 +882,17 @@ void ElementEvaluateDerivatives_CellWiseConstant2d(PetscInt nqp,PetscInt npe,Pet
   
   J00 = 0.5 * dx;
   J11 = 0.5 * dy;
-	
-	for (q=0; q<nqp; q++) {
-
+  
+  for (q=0; q<nqp; q++) {
+    
     iJ00 = 1.0/J00;
     iJ11 = 1.0/J11;
     
-		/* shape function derivatives */
-		for (k=0; k<npe; k++) {
-			dN_dx[q][k] = iJ00 * dN_dxi[q][k];
-			dN_dy[q][k] = iJ11 * dN_deta[q][k];
-		}
+    /* shape function derivatives */
+    for (k=0; k<npe; k++) {
+      dN_dx[q][k] = iJ00 * dN_dxi[q][k];
+      dN_dy[q][k] = iJ11 * dN_deta[q][k];
+    }
   }
 }
 
@@ -923,7 +923,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics2d(SpecFECtx c,Vec u,Vec F)
   
   ierr = DMGetCoordinates(c->dm,&coor);CHKERRQ(ierr);
   ierr = VecGetArrayRead(coor,&LA_coor);CHKERRQ(ierr);
-
+  
   ierr = VecGetArrayRead(u,&LA_u);CHKERRQ(ierr);
   
   ux = &field[0];
@@ -1055,14 +1055,14 @@ PetscErrorCode AssembleBilinearForm_Mass2d(SpecFECtx c,Vec A)
   
   ierr = DMGetCoordinates(c->dm,&coor);CHKERRQ(ierr);
   ierr = VecGetArrayRead(coor,&LA_coor);CHKERRQ(ierr);
-
+  
   for (e=0; e<c->ne; e++) {
     /* get element -> node map */
     elnidx = &element[nbasis*e];
     
     /* generate dofs */
     for (i=0; i<nbasis; i++) {
-
+      
       eldofs[2*i  ] = 2*elnidx[i];
       eldofs[2*i+1] = 2*elnidx[i]+1;
     }
@@ -1084,7 +1084,7 @@ PetscErrorCode AssembleBilinearForm_Mass2d(SpecFECtx c,Vec A)
       qpdata = &c->qp_data[e*c->nqp];
       
       fac = detJ * c->w[q];
-
+      
       Me_ii = fac * (qpdata[q].rho);
       
       /* \int u0v0 dV */
@@ -1133,7 +1133,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
   
   ierr = PetscMalloc(sizeof(PetscInt)*nsources,&eowner_source);CHKERRQ(ierr);
   ierr = PetscMalloc(sizeof(PetscInt)*nsources,&closest_qp);CHKERRQ(ierr);
-
+  
   /* locate cell containing source */
   ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
   dx = (gmax[0] - gmin[0])/((PetscReal)c->mx);
@@ -1154,7 +1154,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
     eowner_source[k] = ii + jj * c->mx;
     printf("source[%d] (%+1.4e,%+1.4e) --> element %d \n",k,xs[2*k],xs[2*k+1],eowner_source[k]);
   }
-
+  
   /* locate closest quadrature point */
   for (k=0; k<nsources; k++) {
     PetscReal sep2,sep2_min = PETSC_MAX_REAL;
@@ -1171,9 +1171,9 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
       elcoords[2*i  ] = LA_coor[2*nidx  ];
       elcoords[2*i+1] = LA_coor[2*nidx+1];
     }
-  
-//    for (nj=0; nj<c->npe_1d; nj++) {
-//      for (ni=0; ni<c->npe_1d; ni++) {
+    
+    //    for (nj=0; nj<c->npe_1d; nj++) {
+    //      for (ni=0; ni<c->npe_1d; ni++) {
     
     for (nj=1; nj<c->npe_1d-1; nj++) {
       for (ni=1; ni<c->npe_1d-1; ni++) {
@@ -1202,7 +1202,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
     moment_k = &moment[4*k];
     dN_dxi_q   = c->dN_dxi[closest_qp[k]];
     dN_deta_q  = c->dN_deta[closest_qp[k]];
-
+    
     dN_dx_q    = c->dN_dx[closest_qp[k]];
     dN_dy_q    = c->dN_dy[closest_qp[k]];
     
@@ -1228,7 +1228,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
     
     ElementEvaluateDerivatives_CellWiseConstant2d(1,nbasis,elcoords,
                                                   c->npe_1d,&dN_dxi_q,&dN_deta_q,&dN_dx_q,&dN_dy_q);
-
+    
     /* compute moment contribution @ source */
     for (i=0; i<nbasis; i++) {
       fe[2*i  ] += (moment_k[0]*dN_dx_q[i] + moment_k[1]*dN_dy_q[i]);
@@ -1244,13 +1244,13 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
       
       PetscReal net_torque = 0.0, torque;
       PetscReal Svec[2],Fvec[2],Fvec_normal[2],Fvec_tangent[2],nrmS,nrmF,costheta,theta,unit[2],centroid[2];
-
+      
       ii = (PetscInt)( ( xs[2*k+0] - gmin[0] )/dx );
       jj = (PetscInt)( ( xs[2*k+1] - gmin[1] )/dy );
       
       if (ii == c->mx) ii--;
       if (jj == c->my) jj--;
-
+      
       //centroid[0] = gmin[0] + dx * ii + 0.5*dx;
       //centroid[1] = gmin[1] + dy * jj + 0.5*dy;
       
@@ -1265,7 +1265,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
           /* vector point from cell center to GLL point */
           Svec[0] = elcoords[2*nid]   - centroid[0];
           Svec[1] = elcoords[2*nid+1] - centroid[1];
-
+          
           Fvec[0] = fe[2*nid];
           Fvec[1] = fe[2*nid+1];
           
@@ -1284,11 +1284,11 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
           
           unit[0] = Svec[0]/nrmS;
           unit[1] = Svec[1]/nrmS; //printf("unitS = %1.4e %1.4e\n",unit[0],unit[1]);
-
+          
           // F = F_n + F_t //
           Fvec_tangent[0] = unit[0] * nrmF * costheta;
           Fvec_tangent[1] = unit[1] * nrmF * costheta;
-
+          
           Fvec_normal[0] = Fvec[0] - Fvec_tangent[0];
           Fvec_normal[1] = Fvec[1] - Fvec_tangent[1];
           
@@ -1396,14 +1396,14 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d(SpecFECtx c,PetscI
       elcoords[2*i  ] = LA_coor[2*nidx  ];
       elcoords[2*i+1] = LA_coor[2*nidx+1];
     }
-
+    
     /* Get source local coordinates */
     ii = (PetscInt)( ( xs[2*k+0] - gmin[0] )/dx );
     jj = (PetscInt)( ( xs[2*k+1] - gmin[1] )/dy );
     
     if (ii == c->mx) ii--;
     if (jj == c->my) jj--;
-
+    
     cell_min[0] = gmin[0] + ii * dx;
     cell_min[1] = gmin[1] + jj * dy;
     
@@ -1437,8 +1437,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d(SpecFECtx c,PetscI
       //printf("fe[%d] %+1.4e %+1.4e\n",i,fe[2*i],fe[2*i+1]);
     }
     ierr = VecSetValues(F,nbasis*ndof,eldofs,fe,ADD_VALUES);CHKERRQ(ierr);
-
-  
+    
+    
     /* torque calculation */
 #if 0
     {
@@ -1514,7 +1514,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d(SpecFECtx c,PetscI
     }
     ierr = PetscFree(dN_dxi);CHKERRQ(ierr);
     ierr = PetscFree(dN_deta);CHKERRQ(ierr);
-  
+    
   }
   ierr = VecAssemblyBegin(F);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(F);CHKERRQ(ierr);
@@ -1558,7 +1558,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_Kernel_CSpline(Spe
   
   ierr = DMGetCoordinates(c->dm,&coor);CHKERRQ(ierr);
   ierr = VecGetArrayRead(coor,&LA_coor);CHKERRQ(ierr);
-
+  
   if (c->basisorder <= 3) {
     kernel_h = 1.5 * (0.5*ds);
   } else {
@@ -1566,13 +1566,13 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_Kernel_CSpline(Spe
     
     //kernel_h = 0.75 * (0.5*ds);
     //printf("kernel_h = %1.4e \n",kernel_h);
-
+    
     //pfac = 2.0/( 2.0*(c->basisorder - 3.0) + 1.0 );
     //kernel_h = pfac * 0.75 * (0.5*ds);
     
     pfac = 3.0/( c->basisorder - 2.0 );
     kernel_h = pfac * (0.5*ds);
-
+    
     
     printf("kernel_h = %1.4e <with pfac>\n",kernel_h);
   }
@@ -1587,7 +1587,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_Kernel_CSpline(Spe
     PetscReal detJ;
     
     for (e=0; e<c->ne; e++) {
-    
+      
       /* get element -> node map */
       elnidx = &element[nbasis*e];
       
@@ -1605,12 +1605,12 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_Kernel_CSpline(Spe
       }
       
       moment_k = &moment[4*k];
-
+      
       ierr = PetscMemzero(fe,sizeof(PetscReal)*nbasis*ndof);CHKERRQ(ierr);
       
       ElementEvaluateDerivatives_CellWiseConstant2d(c->nqp,nbasis,elcoords,
                                                     c->npe_1d,c->dN_dxi,c->dN_deta,c->dN_dx,c->dN_dy);
-
+      
       ElementEvaluateGeometry_CellWiseConstant2d(nbasis,elcoords,c->npe_1d,&detJ);
       
       for (q=0; q<c->nqp; q++) {
@@ -1620,10 +1620,10 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_Kernel_CSpline(Spe
         dN_dy_q    = c->dN_dy[q];
         
         xs_k = &xs[2*k];
-
+        
         /* get physical coordinates of quadrature point */
         x_q = &elcoords[2*q];
-
+        
         /* evaluate cubic spline at each quadrature point */
         sep =  (x_q[0] - xs_k[0]) * (x_q[0] - xs_k[0]);
         sep += (x_q[1] - xs_k[1]) * (x_q[1] - xs_k[1]);
@@ -1652,9 +1652,9 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_Kernel_CSpline(Spe
   ierr = VecAssemblyBegin(F);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(F);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(coor,&LA_coor);CHKERRQ(ierr);
-
+  
   //ierr = VecScale(F,1.0/int_w);CHKERRQ(ierr);
-
+  
   printf("\\int W = %1.14e \n",int_w);
   
   PetscFunctionReturn(0);
@@ -1765,13 +1765,13 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_P0(SpecFECtx c,Pet
     ElementEvaluateDerivatives_CellWiseConstant2d(1,nbasis,elcoords,
                                                   c->npe_1d,&dN_dxi_q,&dN_deta_q,&dN_dx_q,&dN_dy_q);
     ElementEvaluateGeometry_CellWiseConstant2d(nbasis,elcoords,c->npe_1d,&detJ);
-
+    
 #if 0
     /* compute moment contribution @ source */
     for (i=0; i<nbasis; i++) {
       fe[2*i  ] += c->w[i]*(moment_k[0]*dN_dx_q[i] + moment_k[1]*dN_dy_q[i])*4.0;///(dx*dy);
       fe[2*i+1] += c->w[i]*(moment_k[2]*dN_dx_q[i] + moment_k[3]*dN_dy_q[i])*4.0;///(dx*dy);
-      //printf("fe[%d] %+1.4e %+1.4e\n",i,fe[2*i],fe[2*i+1]);
+                                                                                 //printf("fe[%d] %+1.4e %+1.4e\n",i,fe[2*i],fe[2*i+1]);
     }
 #endif
     
@@ -1811,21 +1811,21 @@ PetscErrorCode ElastoDynamicsSetSourceImplementation(SpecFECtx c,PetscInt ii)
   
   switch (itype) {
     case 0:
-      PetscPrintf(PETSC_COMM_WORLD,"  [source implementation]: pointwise evaluation\n");
-      break;
+    PetscPrintf(PETSC_COMM_WORLD,"  [source implementation]: pointwise evaluation\n");
+    break;
     case 1:
-      PetscPrintf(PETSC_COMM_WORLD,"  [source implementation]: closest internal basis\n");
-      break;
+    PetscPrintf(PETSC_COMM_WORLD,"  [source implementation]: closest internal basis\n");
+    break;
     case 2:
-      PetscPrintf(PETSC_COMM_WORLD,"  [source implementation]: cspline kernel\n");
-      break;
+    PetscPrintf(PETSC_COMM_WORLD,"  [source implementation]: cspline kernel\n");
+    break;
     case 3:
-      PetscPrintf(PETSC_COMM_WORLD,"  [source implementation]: P0\n");
-      break;
-      
+    PetscPrintf(PETSC_COMM_WORLD,"  [source implementation]: P0\n");
+    break;
+    
     default:
-      SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Valid choices are 0,1,2");
-      break;
+    SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Valid choices are 0,1,2");
+    break;
   }
   c->source_implementation = itype;
   
@@ -1846,24 +1846,24 @@ PetscErrorCode ElastoDynamicsSourceSetup(SpecFECtx ctx,PetscReal source_coor[],P
   
   switch (ctx->source_implementation) {
     case -1:
-      SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Source implementation not yet set. Valid choices are 0,1,2");
-      break;
+    SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Source implementation not yet set. Valid choices are 0,1,2");
+    break;
     case 0:
-      ierr = AssembleLinearForm_ElastoDynamicsMomentDirac2d(ctx,1,source_coor,moment,g);CHKERRQ(ierr);
-      break;
+    ierr = AssembleLinearForm_ElastoDynamicsMomentDirac2d(ctx,1,source_coor,moment,g);CHKERRQ(ierr);
+    break;
     case 1:
-      ierr = AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(ctx,1,source_coor,moment,g);CHKERRQ(ierr);
-      break;
+    ierr = AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(ctx,1,source_coor,moment,g);CHKERRQ(ierr);
+    break;
     case 2:
-      ierr = AssembleLinearForm_ElastoDynamicsMomentDirac2d_Kernel_CSpline(ctx,1,source_coor,moment,g);CHKERRQ(ierr);
-      break;
+    ierr = AssembleLinearForm_ElastoDynamicsMomentDirac2d_Kernel_CSpline(ctx,1,source_coor,moment,g);CHKERRQ(ierr);
+    break;
     case 3:
-      ierr = AssembleLinearForm_ElastoDynamicsMomentDirac2d_P0(ctx,1,source_coor,moment,g);CHKERRQ(ierr);
-      break;
-      
+    ierr = AssembleLinearForm_ElastoDynamicsMomentDirac2d_P0(ctx,1,source_coor,moment,g);CHKERRQ(ierr);
+    break;
+    
     default:
-      SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Valid choices are 0,1,2");
-      break;
+    SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Valid choices are 0,1,2");
+    break;
   }
   PetscFunctionReturn(0);
 }
@@ -1893,10 +1893,10 @@ PetscErrorCode ElastoDynamicsComputeTimeStep_2d(SpecFECtx ctx,PetscReal *_dt)
   ierr = DMDAGetBoundingBox(ctx->dm,gmin,gmax);CHKERRQ(ierr);
   dx = (gmax[0] - gmin[0])/((PetscReal)ctx->mx);
   dy = (gmax[1] - gmin[1])/((PetscReal)ctx->my);
-
+  
   min_el_r = dx;
   min_el_r = PetscMin(min_el_r,dy);
-
+  
   
   for (e=0; e<ctx->ne; e++) {
     PetscReal max_el_Vp,value;
@@ -1939,36 +1939,36 @@ PetscErrorCode RecordUV(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,Vec v)
   PetscErrorCode ierr;
   PetscInt ni,nj,ei,ej,n,nid,eid,*element,*elbasis;
   static char filename[PETSC_MAX_PATH_LEN];
-
+  
   if (!beenhere) {
     switch (c->source_implementation) {
       case -1:
-        sprintf(filename,"defaultsource-receiverCP-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
-        break;
+      sprintf(filename,"defaultsource-receiverCP-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
+      break;
       case 0:
-        sprintf(filename,"deltasource-receiverCP-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
-        break;
+      sprintf(filename,"deltasource-receiverCP-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
+      break;
       case 1:
-        sprintf(filename,"closestqpsource-receiverCP-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
-        break;
+      sprintf(filename,"closestqpsource-receiverCP-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
+      break;
       case 2:
-        sprintf(filename,"csplinesource-receiverCP-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
-        break;
+      sprintf(filename,"csplinesource-receiverCP-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
+      break;
       case 3:
-        sprintf(filename,"p0source-receiverCP-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
-        break;
+      sprintf(filename,"p0source-receiverCP-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
+      break;
       default:
-        break;
+      break;
     }
   }
   
   ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
   dx = (gmax[0] - gmin[0])/((PetscReal)c->mx);
   ei = (xr[0] - gmin[0])/dx;
-
+  
   dy = (gmax[1] - gmin[1])/((PetscReal)c->my);
   ej = (xr[1] - gmin[1])/dy;
-
+  
   eid = ei + ej * c->mx;
   
   /* get element -> node map */
@@ -2008,13 +2008,13 @@ PetscErrorCode RecordUV(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,Vec v)
   
   ierr = VecGetArrayRead(u,&LA_u);CHKERRQ(ierr);
   ierr = VecGetArrayRead(v,&LA_v);CHKERRQ(ierr);
-
+  
   fprintf(fp,"%1.4e %+1.8e %+1.8e %+1.8e %+1.8e\n",time,LA_u[2*nid],LA_u[2*nid+1],LA_v[2*nid],LA_v[2*nid+1]);
   
   ierr = VecRestoreArrayRead(v,&LA_v);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(u,&LA_u);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(coor,&LA_c);CHKERRQ(ierr);
-
+  
   fclose(fp);
   
   PetscFunctionReturn(0);
@@ -2034,22 +2034,22 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
   if (!beenhere) {
     switch (c->source_implementation) {
       case -1:
-        sprintf(filename,"defaultsource-receiver-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
-        break;
+      sprintf(filename,"defaultsource-receiver-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
+      break;
       case 0:
-        sprintf(filename,"deltasource-receiver-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
-        break;
+      sprintf(filename,"deltasource-receiver-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
+      break;
       case 1:
-        sprintf(filename,"closestqpsource-receiver-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
-        break;
+      sprintf(filename,"closestqpsource-receiver-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
+      break;
       case 2:
-        sprintf(filename,"csplinesource-receiver-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
-        break;
+      sprintf(filename,"csplinesource-receiver-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
+      break;
       case 3:
-        sprintf(filename,"p0source-receiver-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
-        break;
+      sprintf(filename,"p0source-receiver-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
+      break;
       default:
-        break;
+      break;
     }
   }
   
@@ -2066,7 +2066,7 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
   } else {
     fp = fopen(filename,"a");
   }
-
+  
   /* get containing element */
   ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
   dx = (gmax[0] - gmin[0])/((PetscReal)c->mx);
@@ -2076,7 +2076,7 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
   ej = (xr[1] - gmin[1])/dy;
   
   eid = ei + ej * c->mx;
-
+  
   /* get element -> node map */
   element = c->element;
   elbasis = &element[c->npe*eid];
@@ -2108,7 +2108,7 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
         k++;
       }
     }
-
+    
     ierr = VecGetArrayRead(coor,&LA_c);CHKERRQ(ierr);
     
     xri[0] = xri[1] = 0.0;
@@ -2118,7 +2118,7 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
       xri[0] += N[k] * LA_c[2*nid+0];
       xri[1] += N[k] * LA_c[2*nid+1];
     }
-
+    
     
     printf("# receiver location: x,y %+1.8e %+1.8e -- interpolated coordinate --> %+1.8e %+1.8e\n",xr[0],xr[1],xri[0],xri[1]);
     
@@ -2128,8 +2128,8 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
     ierr = PetscFree(N_s2[0]);CHKERRQ(ierr);
     ierr = PetscFree(N_s2);CHKERRQ(ierr);
   }
-    
-    
+  
+  
   ierr = VecGetArrayRead(u,&LA_u);CHKERRQ(ierr);
   ierr = VecGetArrayRead(v,&LA_v);CHKERRQ(ierr);
   
@@ -2143,7 +2143,7 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
     vr[0] += N[k] * LA_v[2*nid+0];
     vr[1] += N[k] * LA_v[2*nid+1];
   }
-
+  
   fprintf(fp,"%1.4e %+1.8e %+1.8e %+1.8e %+1.8e\n",time,ur[0],ur[1],vr[0],vr[1]);
   
   ierr = VecRestoreArrayRead(v,&LA_v);CHKERRQ(ierr);
@@ -2156,14 +2156,14 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
 }
 
 /*
- INTERNATIONAL JOURNAL FOR NUMERICAL METHODS IN ENGINEERING 
+ INTERNATIONAL JOURNAL FOR NUMERICAL METHODS IN ENGINEERING
  Int. J. Numer. Meth. Engng. 45, 1139–1164 (1999)
  THE SPECTRAL ELEMENT METHOD FOR ELASTIC WAVE EQUATIONS—APPLICATION TO 2-D AND 3-D SEISMIC PROBLEMS
  DIMITRI KOMATITSCH, JEAN-PIERRE VILOTTE, ROSSANA VAI, JOSE M.CASTILLO-COVARRUBIAS AND FRANCISCOJ.SANCHEZ-SESMA
  
  stf[0] S(t_{n})
  stf[1] S(t_{n+1})
-*/
+ */
 PetscErrorCode TSExplicitNewmark(Vec u,Vec v,Vec a,Vec Md,Vec f,PetscReal stf[],PetscReal dt,PetscReal alpha,PetscReal beta,PetscReal gamma)
 {
   Vec vi,dv,f_alpha;
@@ -2182,14 +2182,14 @@ PetscErrorCode TSExplicitNewmark(Vec u,Vec v,Vec a,Vec Md,Vec f,PetscReal stf[],
   if (alpha < 1.0) {
     ierr = VecAXPY(f_alpha,(1-alpha)*stf[0],f);CHKERRQ(ierr);
   }
-
+  
   /* solve */
   ierr = VecScale(f_alpha,dt);CHKERRQ(ierr);
   ierr = VecPointwiseDivide(dv,f_alpha,Md);CHKERRQ(ierr);
   
   /* update velocity */
   ierr = VecAXPY(v,1.0,dv);CHKERRQ(ierr); // v_{n+1} = dv + v_{n}
-
+  
   /* update displacement */
   ierr = VecAXPY(u,dt*(1.0 - beta/gamma),vi);CHKERRQ(ierr);
   ierr = VecAXPY(u,dt*(beta/gamma),v);CHKERRQ(ierr);
@@ -2213,7 +2213,7 @@ PetscErrorCode TSExplicitNewmark(Vec u,Vec v,Vec a,Vec Md,Vec f,PetscReal stf[],
  How to render second order accurate time-stepping algorithms into fourth
  order accurate while retaining the stability and conservation properties
  N. TARNOW and J.C. SIMO
-*/
+ */
 PetscErrorCode TSExplicitNewmarkFourth(Vec u,Vec v,Vec a,Vec Md,Vec f,PetscReal stf[],PetscReal time,PetscReal dt,PetscReal alpha,PetscReal beta,PetscReal gamma)
 {
   PetscReal theta;
@@ -2226,12 +2226,12 @@ PetscErrorCode TSExplicitNewmarkFourth(Vec u,Vec v,Vec a,Vec Md,Vec f,PetscReal 
   stf_sub[0] = stf[0]; /* t = t */
   stf_sub[1] = 0;      /* t = t + dt_sub0 */
   ierr = TSExplicitNewmark(u,v,a,Md,f,stf_sub,dt_sub0,alpha,beta,gamma);CHKERRQ(ierr);
-
+  
   dt_sub1 = (1.0 - 2.0*theta) * dt;
   stf_sub[0] = stf[0]; /* t = t + dt_sub0 */
   stf_sub[1] = 0;      /* t = t + dt_sub0 + dt_sub1 */
   ierr = TSExplicitNewmark(u,v,a,Md,f,stf_sub,dt_sub1,alpha,beta,gamma);CHKERRQ(ierr);
-
+  
   dt_sub2 = theta * dt;
   stf_sub[0] = stf[0]; /* t = t + dt_sub0 + dt_sub1 */
   stf_sub[1] = 0;      /* t = t + dt_sub0 + dt_sub1 + dt_sub2 */
@@ -2255,7 +2255,7 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
   p = 2;
   ierr = PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);CHKERRQ(ierr);
   ierr = SpecFECtxCreateMesh(ctx,2,mx,my,PETSC_DECIDE,p,2);CHKERRQ(ierr);
-
+  
   {
     PetscReal scale[] = { 30.0e3, 17.0e3 };
     PetscReal shift[] = { -15.0e3, -17.0e3 };
@@ -2267,20 +2267,20 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
   
   ierr = DMDASetFieldName(ctx->dm,0,"_x");CHKERRQ(ierr);
   ierr = DMDASetFieldName(ctx->dm,1,"_y");CHKERRQ(ierr);
-
+  
   DMCreateGlobalVector(ctx->dm,&u); PetscObjectSetName((PetscObject)u,"disp");
   DMCreateGlobalVector(ctx->dm,&v); PetscObjectSetName((PetscObject)v,"velo");
   DMCreateGlobalVector(ctx->dm,&a); PetscObjectSetName((PetscObject)a,"accl");
   DMCreateGlobalVector(ctx->dm,&f);
   DMCreateGlobalVector(ctx->dm,&g);
   DMCreateGlobalVector(ctx->dm,&Md);
-
+  
   ierr = VecZeroEntries(u);CHKERRQ(ierr);
   
   ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,"uva.vts",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
   ierr = VecView(u,viewer);CHKERRQ(ierr);
   ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
-
+  
   /* Test basis and basis derivs */
   {
     PetscReal *xi,**GNx;
@@ -2304,14 +2304,14 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
   
   k = 0;
   time = 0.0;
-
+  
   time_max = 1.0;
   ierr = PetscOptionsGetReal(NULL,NULL,"-tmax",&time_max,NULL);CHKERRQ(ierr);
-
+  
   ierr = ElastoDynamicsComputeTimeStep_2d(ctx,&dt);CHKERRQ(ierr);
   dt = dt * 0.3;
   ierr = PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);CHKERRQ(ierr);
-
+  
   nt = 1000;
   ierr = PetscOptionsGetInt(NULL,NULL,"-nt",&nt,NULL);CHKERRQ(ierr);
   
@@ -2335,43 +2335,43 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
     ierr = VecAXPY(u,0.5*dt*dt,a);CHKERRQ(ierr); /* u_{n+1} = u_{n+1} + 0.5.dt^2.a_{n} */
     
     ierr = VecAXPY(v,0.5*dt,a);CHKERRQ(ierr); /* v' = v_{n} + 0.5.dt.a_{n} */
-
+    
     //
     /* Evaluate source time function, S(t_{n+1}) */
     stf = 1.0;
     {
       PetscReal arg;
-
+      
       // moment-time history
       arg = time / stf_exp_T;
       stf = 1.0 - (1.0 + arg) * exp(-arg);
     }
     //
-
+    
     /* Compute f = -F^{int}( u_{n+1} ) */
     ierr = AssembleLinearForm_ElastoDynamics2d(ctx,u,f);CHKERRQ(ierr);
-
+    
     /* Update force; F^{ext}_{n+1} = f + S(t_{n+1}) g(x) */
     ierr = VecAXPY(f,stf,g);CHKERRQ(ierr);
-
+    
     /* "Solve"; a_{n+1} = M^{-1} f */
     ierr = VecPointwiseDivide(a,f,Md);CHKERRQ(ierr);
     
     /* Update velocity */
     ierr = VecAXPY(v,0.5*dt,a);CHKERRQ(ierr); /* v_{n+1} = v' + 0.5.dt.a_{n+1} */
-
+    
     VecNorm(u,NORM_2,&nrm);
     VecMin(u,0,&min);
     VecMax(u,0,&max); PetscPrintf(PETSC_COMM_WORLD,"  [displacement] max = %+1.4e : min = %+1.4e : l2 = %+1.4e \n",max,min,nrm);
     VecNorm(v,NORM_2,&nrm);
     VecMin(v,0,&min);
     VecMax(v,0,&max); PetscPrintf(PETSC_COMM_WORLD,"  [velocity]     max = %+1.4e : min = %+1.4e : l2 = %+1.4e \n",max,min,nrm);
-
+    
     {
       PetscReal xr[] = { 0.0, 0.0 };
       ierr = RecordUV(ctx,time,xr,u,v);CHKERRQ(ierr);
     }
-
+    
     if (k%of == 0) {
       char name[PETSC_MAX_PATH_LEN];
       
@@ -2404,7 +2404,7 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
   ierr = VecDestroy(&f);CHKERRQ(ierr);
   ierr = VecDestroy(&Md);CHKERRQ(ierr);
   ierr = VecDestroy(&g);CHKERRQ(ierr);
-
+  
   
   PetscFunctionReturn(0);
 }
@@ -2470,7 +2470,7 @@ PetscErrorCode specfem_ex2(PetscInt mx,PetscInt my)
     //ierr = AssembleLinearForm_ElastoDynamicsMomentDirac2d(ctx,1,source_coor,moment,g);CHKERRQ(ierr);
     ierr = AssembleLinearForm_ElastoDynamicsMomentDirac2d_Kernel_CSpline(ctx,1,source_coor,moment,g);CHKERRQ(ierr);
   }
-
+  
   //ierr = VecView(g,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
   ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,"f.vts",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
   ierr = VecView(g,viewer);CHKERRQ(ierr);
@@ -2705,10 +2705,10 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
     
     /* Update velocity */
     ierr = VecAXPY(v,0.5*dt,a);CHKERRQ(ierr); /* v_{n+1} = v' + 0.5.dt.a_{n+1} */
-
+    
     if (k%100 == 0) {
       PetscReal nrm,max,min;
-
+      
       PetscPrintf(PETSC_COMM_WORLD,"[step %9D] time = %1.4e : dt = %1.4e \n",k,time,dt);
       printf("  STF(%1.4e) = %+1.4e\n",time,stf);
       VecNorm(u,NORM_2,&nrm);
@@ -2741,7 +2741,7 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
   }
   {
     PetscReal nrm,max,min;
-
+    
     PetscPrintf(PETSC_COMM_WORLD,"[step %9D] time = %1.4e : dt = %1.4e \n",k,time,dt);
     printf("  STF(%1.4e) = %+1.4e\n",time,stf);
     VecNorm(u,NORM_2,&nrm);
@@ -2797,7 +2797,7 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
     
     PetscReal scale[] = {  alpha, alpha };
     PetscReal shift[] = { -alpha/2.0,-alpha/2.0 };
-
+    
     ierr = SpecFECtxScaleMeshCoords(ctx,scale,shift);CHKERRQ(ierr);
   }
   
