@@ -791,6 +791,7 @@ PetscErrorCode SpecFECtxCreateMesh(SpecFECtx c,PetscInt dim,PetscInt mx,PetscInt
 
       ierr = DMDACreate2d(PETSC_COMM_WORLD,DM_BOUNDARY_NONE,DM_BOUNDARY_NONE,DMDA_STENCIL_BOX,
                           c->nx,c->ny,PETSC_DECIDE,PETSC_DECIDE,ndofs,stencil_width,NULL,NULL,&c->dm);CHKERRQ(ierr);
+      ierr = DMSetUp(c->dm);CHKERRQ(ierr);
       ierr = SpecFECtxCreateENMap2d(c);CHKERRQ(ierr);
       ierr = SpecFECtxCreateMeshCoords2d(c);CHKERRQ(ierr);
 
