@@ -3493,6 +3493,269 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
   }
   
   ierr = SeismicSourceDestroy(&src);CHKERRQ(ierr);
+  ierr = SeismicSTFDestroy(&stf);CHKERRQ(ierr);
+  ierr = VecDestroy(&u);CHKERRQ(ierr);
+  ierr = VecDestroy(&v);CHKERRQ(ierr);
+  ierr = VecDestroy(&a);CHKERRQ(ierr);
+  ierr = VecDestroy(&f);CHKERRQ(ierr);
+  ierr = VecDestroy(&Md);CHKERRQ(ierr);
+  ierr = VecDestroy(&g);CHKERRQ(ierr);
+  
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
+{
+  PetscErrorCode ierr;
+  SpecFECtx ctx;
+  PetscInt p,k,nt,of;
+  PetscViewer viewer;
+  Vec u,v,a,f,g,Md;
+  PetscReal time,dt,time_max;
+  PetscBool psource=PETSC_TRUE,ssource=PETSC_FALSE;
+  PetscInt s,nsources;
+  SeismicSource *src;
+  SeismicSTF *stf;
+  PetscInt nrecv;
+  PetscReal *xr_list;
+  
+  
+  /*
+    Create the structured mesh for the spectral element method.
+   The default mesh is defined over the domain [0,1]^2.
+  */
+  ierr = SpecFECtxCreate(&ctx);CHKERRQ(ierr);
+  p = 2;
+  ierr = PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);CHKERRQ(ierr);
+  ierr = SpecFECtxCreateMesh(ctx,2,mx,my,PETSC_DECIDE,p,2);CHKERRQ(ierr);
+
+  /* 
+   Define your domain by shifting and scaling the default [0,1]^2 domain
+  */
+  {
+    PetscReal alpha = 2.0e3;
+    
+    //PetscReal scale[] = {  4.0e3, 4.0e3 };
+    //PetscReal shift[] = { -2.0e3,-2.0e3 };
+    
+    PetscReal scale[] = {  alpha, alpha };
+    PetscReal shift[] = { -alpha/2.0,-alpha/2.0 };
+    
+    ierr = SpecFECtxScaleMeshCoords(ctx,scale,shift);CHKERRQ(ierr);
+  }
+  
+  /*
+   Specify the material properties for the domain.
+   This function sets constant material properties in every cell.
+   More general methods can be easily added.
+  */
+  ierr = SpecFECtxSetConstantMaterialProperties_Velocity(ctx,4746.3670317412243 ,2740.2554625435928, 1000.0);CHKERRQ(ierr); // vp,vs,rho
+  
+  ierr = DMDASetFieldName(ctx->dm,0,"_x");CHKERRQ(ierr);
+  ierr = DMDASetFieldName(ctx->dm,1,"_y");CHKERRQ(ierr);
+  
+  DMCreateGlobalVector(ctx->dm,&u); PetscObjectSetName((PetscObject)u,"disp");
+  DMCreateGlobalVector(ctx->dm,&v); PetscObjectSetName((PetscObject)v,"velo");
+  DMCreateGlobalVector(ctx->dm,&a); PetscObjectSetName((PetscObject)a,"accl");
+  DMCreateGlobalVector(ctx->dm,&f); PetscObjectSetName((PetscObject)f,"f");
+  DMCreateGlobalVector(ctx->dm,&g); PetscObjectSetName((PetscObject)g,"g");
+  DMCreateGlobalVector(ctx->dm,&Md);
+  
+  ierr = VecZeroEntries(u);CHKERRQ(ierr);
+  
+  /*
+   Write out the mesh and intial values for the displacement, velocity and acceleration (u,v,a)
+  */
+  ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,"uva.vts",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
+  ierr = VecView(u,viewer);CHKERRQ(ierr);
+  ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+  
+  ierr = AssembleBilinearForm_Mass2d(ctx,Md);CHKERRQ(ierr);
+  
+  /* Define two sources */
+  
+  nsources = 2;
+  ierr = PetscMalloc1(nsources,&src);CHKERRQ(ierr);
+  
+  /* configure source 1 */
+  {
+    PetscReal moment[] = { 0.0, 0.0, 0.0, 0.0 };
+    PetscReal source_coor[] = { 0.0, 100.0 };
+    PetscReal M;
+    
+    M = 1000.0; /* gar6more input usings M/rho = 1 */
+    //if (psource) {
+      moment[0] = moment[3] = M; /* p-source <explosive> */
+    //}
+    PetscPrintf(PETSC_COMM_WORLD,"Moment: [ %+1.2e , %+1.2e ; %+1.2e , %+1.2e ]\n",moment[0],moment[1],moment[2],moment[3]);
+    
+    ierr = SeismicSourceCreate(ctx,SOURCE_TYPE_MOMENT,SOURCE_IMPL_NEAREST_QPOINT,source_coor,moment,&src[0]);CHKERRQ(ierr); /* note the index of src[] here */
+  }
+
+  /* configure source 2 */
+  {
+    PetscReal moment[] = { 0.0, 0.0, 0.0, 0.0 };
+    PetscReal source_coor[] = { 400.0, 400.0 };
+    PetscReal M;
+    
+    M = 1000.0; /* gar6more input usings M/rho = 1 */
+    //if (ssource) {
+      moment[1] = moment[2] = M; /* s-source <double-couple> */
+      moment[1] = -M;
+      moment[2] = M;
+    //}
+    PetscPrintf(PETSC_COMM_WORLD,"Moment: [ %+1.2e , %+1.2e ; %+1.2e , %+1.2e ]\n",moment[0],moment[1],moment[2],moment[3]);
+    
+    ierr = SeismicSourceCreate(ctx,SOURCE_TYPE_MOMENT,SOURCE_IMPL_NEAREST_QPOINT,source_coor,moment,&src[1]);CHKERRQ(ierr); /* note the index of src[] here */
+  }
+  /* setup sources */
+  for (s=0; s<nsources; s++) {
+    ierr = SeismicSourceSetup(src[s]);CHKERRQ(ierr);
+  }
+
+  /*
+   Write out the representation of the sources using STF() = 1.0 for all sources.
+   Requires a dummy evaluation.
+  */
+  ierr = SeismicSourceEvaluate(0.0,nsources,src,NULL,g);CHKERRQ(ierr);
+
+  ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,"f.vts",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
+  ierr = VecView(g,viewer);CHKERRQ(ierr);
+  ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+  
+  /* 
+   Define two source time functions
+  */
+  ierr = PetscMalloc1(nsources,&stf);CHKERRQ(ierr);
+  
+  /* configure stf for source 1 */
+  ierr = SeismicSTFCreate_Ricker(0.15,12.0,1.0,&stf[0]);CHKERRQ(ierr); /* note the index of stf[] here */
+
+  /* configure stf for source 2 */
+  ierr = SeismicSTFCreate_Ricker(0.25,4.0,1.0,&stf[1]);CHKERRQ(ierr); /* note the index of stf[] here */
+
+  /*
+   Define the location of the receivers
+  */
+  nrecv = 3;
+  ierr = PetscMalloc1(nrecv*2,&xr_list);CHKERRQ(ierr);
+  xr_list[0] = 100.0; /* x-coordinate for receiver 1 */
+  xr_list[1] = 200.0; /* y-coordinate for receiver 1 */
+
+  xr_list[2] = 150.0;
+  xr_list[3] = 200.0;
+
+  xr_list[4] = 180.0;
+  xr_list[5] = 200.0;
+
+
+  /* Initialize time loop */
+  k = 0;
+  time = 0.0;
+  
+  time_max = 0.4;
+  ierr = PetscOptionsGetReal(NULL,NULL,"-tmax",&time_max,NULL);CHKERRQ(ierr);
+  PetscPrintf(PETSC_COMM_WORLD,"[spec2d] Requested time period: %1.4e\n",time_max);
+  
+  ierr = ElastoDynamicsComputeTimeStep_2d(ctx,&dt);CHKERRQ(ierr);
+  dt = dt * 0.2;
+  ierr = PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);CHKERRQ(ierr);
+  PetscPrintf(PETSC_COMM_WORLD,"[spec2d] Using time step size: %1.4e\n",dt);
+  
+  nt = 1000000;
+  nt = (PetscInt)(time_max / dt ) + 4;
+  ierr = PetscOptionsGetInt(NULL,NULL,"-nt",&nt,NULL);CHKERRQ(ierr);
+  PetscPrintf(PETSC_COMM_WORLD,"[spec2d] Estimated number of time steps: %D\n",nt);
+  
+  of = 5000;
+  ierr = PetscOptionsGetInt(NULL,NULL,"-of",&of,NULL);CHKERRQ(ierr);
+  
+  /* Perform time stepping */
+  for (k=1; k<=nt; k++) {
+    
+    time = time + dt;
+    
+    ierr = VecAXPY(u,dt,v);CHKERRQ(ierr); /* u_{n+1} = u_{n} + dt.v_{n} */
+    
+    ierr = VecAXPY(u,0.5*dt*dt,a);CHKERRQ(ierr); /* u_{n+1} = u_{n+1} + 0.5.dt^2.a_{n} */
+    
+    ierr = VecAXPY(v,0.5*dt,a);CHKERRQ(ierr); /* v' = v_{n} + 0.5.dt.a_{n} */
+    
+    /* Evaluate source time function, S(t_{n+1}) */
+    ierr = SeismicSourceEvaluate(time,nsources,src,stf,g);CHKERRQ(ierr);
+    
+    /* Compute f = -F^{int}( u_{n+1} ) */
+    ierr = AssembleLinearForm_ElastoDynamics2d(ctx,u,f);CHKERRQ(ierr);
+    
+    /* Update force; F^{ext}_{n+1} = f + S(t_{n+1}) g(x) */
+    ierr = VecAXPY(f,1.0,g);CHKERRQ(ierr);
+    
+    /* "Solve"; a_{n+1} = M^{-1} f */
+    ierr = VecPointwiseDivide(a,f,Md);CHKERRQ(ierr);
+    
+    /* Update velocity */
+    ierr = VecAXPY(v,0.5*dt,a);CHKERRQ(ierr); /* v_{n+1} = v' + 0.5.dt.a_{n+1} */
+    
+    if (k%100 == 0) {
+      PetscReal nrm,max,min;
+      
+      PetscPrintf(PETSC_COMM_WORLD,"[step %9D] time = %1.4e : dt = %1.4e \n",k,time,dt);
+      VecNorm(u,NORM_2,&nrm);
+      VecMin(u,0,&min);
+      VecMax(u,0,&max); PetscPrintf(PETSC_COMM_WORLD,"  [displacement] max = %+1.4e : min = %+1.4e : l2 = %+1.4e \n",max,min,nrm);
+      VecNorm(v,NORM_2,&nrm);
+      VecMin(v,0,&min);
+      VecMax(v,0,&max); PetscPrintf(PETSC_COMM_WORLD,"  [velocity]     max = %+1.4e : min = %+1.4e : l2 = %+1.4e \n",max,min,nrm);
+    }
+
+    /*
+      Write out the u,v,a values at each receiver
+    */
+    ierr = RecordUVA_MultipleStations_NearestGLL(ctx,time,nrecv,xr_list,u,v,a);CHKERRQ(ierr);
+    
+    if (k%of == 0) {
+      char name[PETSC_MAX_PATH_LEN];
+      
+      PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4d.vts",k);
+      ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
+      ierr = VecView(u,viewer);CHKERRQ(ierr);
+      ierr = VecView(v,viewer);CHKERRQ(ierr);
+      ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+    }
+    
+    if (time >= time_max) {
+      break;
+    }
+  }
+  {
+    PetscReal nrm,max,min;
+    
+    PetscPrintf(PETSC_COMM_WORLD,"[step %9D] time = %1.4e : dt = %1.4e \n",k,time,dt);
+    VecNorm(u,NORM_2,&nrm);
+    VecMin(u,0,&min);
+    VecMax(u,0,&max); PetscPrintf(PETSC_COMM_WORLD,"  [displacement] max = %+1.4e : min = %+1.4e : l2 = %+1.4e \n",max,min,nrm);
+    VecNorm(v,NORM_2,&nrm);
+    VecMin(v,0,&min);
+    VecMax(v,0,&max); PetscPrintf(PETSC_COMM_WORLD,"  [velocity]     max = %+1.4e : min = %+1.4e : l2 = %+1.4e \n",max,min,nrm);
+  }
+  
+  /* plot last snapshot */
+  {
+    char name[PETSC_MAX_PATH_LEN];
+    
+    PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4d.vts",k);
+    ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
+    ierr = VecView(u,viewer);CHKERRQ(ierr);
+    ierr = VecView(v,viewer);CHKERRQ(ierr);
+    ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+  }
+  
+  for (s=0; s<nsources; s++) {
+    ierr = SeismicSourceDestroy(&src[s]);CHKERRQ(ierr);
+    ierr = SeismicSTFDestroy(&stf[s]);CHKERRQ(ierr);
+  }
+  ierr = PetscFree(src);CHKERRQ(ierr);
+  ierr = PetscFree(stf);CHKERRQ(ierr);
   ierr = VecDestroy(&u);CHKERRQ(ierr);
   ierr = VecDestroy(&v);CHKERRQ(ierr);
   ierr = VecDestroy(&a);CHKERRQ(ierr);
@@ -3521,7 +3784,9 @@ int main(int argc,char **args)
   //ierr = specfem(mx,my);CHKERRQ(ierr);
   //ierr = specfem_ex2(mx,my);CHKERRQ(ierr); // comparison with sem2dpack
   //ierr = specfem_gare6(mx,my);CHKERRQ(ierr); // comparison with gare6more
-  ierr = specfem_gare6_ex2(mx,my);CHKERRQ(ierr); // comparison with gare6more
+  //ierr = specfem_gare6_ex2(mx,my);CHKERRQ(ierr); // comparison with gare6more
+  
+  ierr = se2wave_demo(mx,my);CHKERRQ(ierr);
   
   ierr = PetscFinalize();
   return 0;
