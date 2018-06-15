@@ -229,7 +229,7 @@ PetscErrorCode TabulateBasis1d_CLEGENDRE(PetscInt npoints,PetscReal xi[],PetscIn
   }
   
   /* generate all the basis coefficients */
-  ierr = MatCreateSeqDense(PETSC_COMM_SELF,nbasis,nbasis,PETSC_NULL,&A);CHKERRQ(ierr);
+  ierr = MatCreateSeqDense(PETSC_COMM_SELF,nbasis,nbasis,NULL,&A);CHKERRQ(ierr);
   for (k=0; k<nbasis; k++) {
     PetscReal xil,Aij;
     
@@ -249,7 +249,7 @@ PetscErrorCode TabulateBasis1d_CLEGENDRE(PetscInt npoints,PetscReal xi[],PetscIn
     PetscReal cond;
     PetscBool compute_vandermonde_condition = PETSC_FALSE;
     
-    PetscOptionsGetBool(PETSC_NULL,"-compute_vandermonde_condition",&compute_vandermonde_condition,0);
+    PetscOptionsGetBool(NULL,"-compute_vandermonde_condition",&compute_vandermonde_condition,0);
     if (compute_vandermonde_condition) {
       
       PetscPrintf(PETSC_COMM_WORLD,"Computing condition number of Vandermonde matrix\n");
@@ -363,7 +363,7 @@ PetscErrorCode TabulateBasisDerivatives1d_CLEGENDRE(PetscInt npoints,PetscReal x
   }
   
   /* generate all the basis coefficients */
-  ierr = MatCreateSeqDense(PETSC_COMM_SELF,nbasis,nbasis,PETSC_NULL,&A);CHKERRQ(ierr);
+  ierr = MatCreateSeqDense(PETSC_COMM_SELF,nbasis,nbasis,NULL,&A);CHKERRQ(ierr);
   for (k=0; k<nbasis; k++) {
     PetscReal xil,Aij;
     
@@ -383,7 +383,7 @@ PetscErrorCode TabulateBasisDerivatives1d_CLEGENDRE(PetscInt npoints,PetscReal x
     PetscReal cond;
     PetscBool compute_vandermonde_condition = PETSC_FALSE;
     
-    PetscOptionsGetBool(PETSC_NULL,"-compute_vandermonde_condition",&compute_vandermonde_condition,0);
+    PetscOptionsGetBool(NULL,"-compute_vandermonde_condition",&compute_vandermonde_condition,0);
     if (compute_vandermonde_condition) {
       
       PetscPrintf(PETSC_COMM_WORLD,"Computing condition number of Vandermonde matrix\n");
