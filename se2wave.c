@@ -1190,11 +1190,11 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
     if (ii == c->mx) ii--;
     if (jj == c->my) jj--;
     
-    if (ii < 0) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_USER,"source: x < gmin[0]");
-    if (jj < 0) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_USER,"source: y < gmin[1]");
+    if (ii < 0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: x < gmin[0]");
+    if (jj < 0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: y < gmin[1]");
     
-    if (ii > c->mx) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_USER,"source: x > gmax[0]");
-    if (jj > c->my) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_USER,"source: y > gmax[1]");
+    if (ii > c->mx) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: x > gmax[0]");
+    if (jj > c->my) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: y > gmax[1]");
     
     eowner_source[k] = ii + jj * c->mx;
     printf("source[%d] (%+1.4e,%+1.4e) --> element %d \n",k,xs[2*k],xs[2*k+1],eowner_source[k]);
@@ -1405,11 +1405,11 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d(SpecFECtx c,PetscI
     if (ii == c->mx) ii--;
     if (jj == c->my) jj--;
     
-    if (ii < 0) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_USER,"source: x < gmin[0]");
-    if (jj < 0) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_USER,"source: y < gmin[1]");
+    if (ii < 0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: x < gmin[0]");
+    if (jj < 0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: y < gmin[1]");
     
-    if (ii > c->mx) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_USER,"source: x > gmax[0]");
-    if (jj > c->my) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_USER,"source: y > gmax[1]");
+    if (ii > c->mx) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: x > gmax[0]");
+    if (jj > c->my) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: y > gmax[1]");
     
     eowner_source[k] = ii + jj * c->mx;
     printf("source[%d] (%+1.4e,%+1.4e) --> element %d \n",k,xs[2*k],xs[2*k+1],eowner_source[k]);
@@ -1746,11 +1746,11 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_P0(SpecFECtx c,Pet
     if (ii == c->mx) ii--;
     if (jj == c->my) jj--;
     
-    if (ii < 0) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_USER,"source: x < gmin[0]");
-    if (jj < 0) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_USER,"source: y < gmin[1]");
+    if (ii < 0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: x < gmin[0]");
+    if (jj < 0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: y < gmin[1]");
     
-    if (ii > c->mx) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_USER,"source: x > gmax[0]");
-    if (jj > c->my) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_USER,"source: y > gmax[1]");
+    if (ii > c->mx) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: x > gmax[0]");
+    if (jj > c->my) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: y > gmax[1]");
     
     eowner_source[k] = ii + jj * c->mx;
     printf("source[%d] (%+1.4e,%+1.4e) --> element %d \n",k,xs[2*k],xs[2*k+1],eowner_source[k]);
