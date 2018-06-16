@@ -1226,7 +1226,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics2d(SpecFECtx c,Vec u,Vec F)
   PetscReal e_vec[3],sigma_vec[3];
   PetscInt  *element,*elnidx,*eldofs;
   PetscReal *fe,*ux,*uy,*elcoords,detJ,*field;
-  Vec       coor,ul;
+  Vec       coor,ul,fl;
   const PetscReal *LA_coor,*LA_u;
   QPntIsotropicElastic *celldata;
   
@@ -1248,7 +1248,10 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics2d(SpecFECtx c,Vec u,Vec F)
   ierr = DMGlobalToLocalBegin(c->dm,u,INSERT_VALUES,ul);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(c->dm,u,INSERT_VALUES,ul);CHKERRQ(ierr);
   ierr = VecGetArrayRead(ul,&LA_u);CHKERRQ(ierr);
-  
+
+  ierr = DMGetLocalVector(c->dm,&fl);CHKERRQ(ierr);
+  ierr = VecZeroEntries(fl);CHKERRQ(ierr);
+
   ux = &field[0];
   uy = &field[nbasis];
   
@@ -1347,12 +1350,16 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics2d(SpecFECtx c,Vec u,Vec F)
       }
       
     }
-    ierr = VecSetValuesLocal(F,nbasis*ndof,eldofs,fe,ADD_VALUES);CHKERRQ(ierr);
+    //ierr = VecSetValuesLocal(F,nbasis*ndof,eldofs,fe,ADD_VALUES);CHKERRQ(ierr);
+    ierr = VecSetValues(fl,nbasis*ndof,eldofs,fe,ADD_VALUES);CHKERRQ(ierr);
   }
-  ierr = VecAssemblyBegin(F);CHKERRQ(ierr);
-  ierr = VecAssemblyEnd(F);CHKERRQ(ierr);
+  ierr = VecAssemblyBegin(fl);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(fl);CHKERRQ(ierr);
+  ierr = DMLocalToGlobalBegin(c->dm,fl,ADD_VALUES,F);CHKERRQ(ierr);
+  ierr = DMLocalToGlobalEnd(c->dm,fl,ADD_VALUES,F);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(ul,&LA_u);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(c->dm,&ul);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(c->dm,&fl);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(coor,&LA_coor);CHKERRQ(ierr);
   
   PetscFunctionReturn(0);
@@ -2781,7 +2788,7 @@ PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSou
   if (coor[1] > gmax[1]) SETERRQ2(PETSC_COMM_SELF,PETSC_ERR_USER,"Source y-coordinate (%+1.4e) > max(domain).y (%+1.4e)",coor[1],gmax[1]);
 
   ierr = SpecFECtxGetLocalBoundingBox(c,gmin_domain,gmax_domain);CHKERRQ(ierr);
-  printf("rank %d : x[%+1.4e,%+1.4e] - y[%+1.4e,%+1.4e]\n",c->rank,gmin_domain[0],gmax_domain[0],gmin_domain[1],gmax_domain[1]);
+  /*printf("rank %d : x[%+1.4e,%+1.4e] - y[%+1.4e,%+1.4e]\n",c->rank,gmin_domain[0],gmax_domain[0],gmin_domain[1],gmax_domain[1]);*/
   
   source_found = PETSC_TRUE;
   eowner_source = -1;
@@ -2797,7 +2804,7 @@ PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSou
     
     ii = (PetscInt)( ( coor[0] - gmin_domain[0] )/dx );
     jj = (PetscInt)( ( coor[1] - gmin_domain[1] )/dy );
-    printf("  rank %d ii jj %d %d \n",c->rank,ii,jj);
+    /*printf("  rank %d ii jj %d %d \n",c->rank,ii,jj);*/
     
     if (ii == c->mx) ii--;
     if (jj == c->my) jj--;
@@ -2815,7 +2822,7 @@ PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSou
   if (source_found) {
     printf("source (%+1.4e,%+1.4e) --> element %d | rank %d\n",coor[0],coor[1],eowner_source,rank);
   } else {
-    printf("source (%+1.4e,%+1.4e) --> not mapped to rank %d\n",coor[0],coor[1],rank);
+    /*printf("source (%+1.4e,%+1.4e) --> not mapped to rank %d\n",coor[0],coor[1],rank);*/
     *s = NULL;
     PetscFunctionReturn(0);
   }
@@ -4150,7 +4157,7 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
    Write out the representation of the sources using STF() = 1.0 for all sources.
    Requires a dummy evaluation.
   */
-  ierr = SeismicSourceEvaluate(0.0,nsources,src,NULL,g);CHKERRQ(ierr);
+  ierr = SeismicSourceEvaluate(0.0,1,src,NULL,g);CHKERRQ(ierr);
 
   ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,"f.vts",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
   ierr = VecView(g,viewer);CHKERRQ(ierr);
@@ -4218,7 +4225,7 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
     ierr = VecAXPY(v,0.5*dt,a);CHKERRQ(ierr); /* v' = v_{n} + 0.5.dt.a_{n} */
     
     /* Evaluate source time function, S(t_{n+1}) */
-    ierr = SeismicSourceEvaluate(time,nsources,src,stf,g);CHKERRQ(ierr);
+    ierr = SeismicSourceEvaluate(time,1,src,stf,g);CHKERRQ(ierr);
     
     /* Compute f = -F^{int}( u_{n+1} ) */
     ierr = AssembleLinearForm_ElastoDynamics2d(ctx,u,f);CHKERRQ(ierr);
