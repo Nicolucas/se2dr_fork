@@ -1,14 +1,20 @@
-# SE2Wave #
+## SE2Wave ##
 
-### 1. What is this repository for? ###
+`SE2Wave` is a toy implementation of the spectral element method in 2D for wave propagation problems in heterogenous media.
 
-* Provides a toy implementation of the spectral element method in 2D for wave propagation
+#### Features 
+1. Run-time selection of polynomial degree
+2. Extensible source-time function object
+3. Multiple sources, which independent source-time functions
+4. Piece-wise constant (cell-wise) material properties
 
-#### Current design limitations ####
-1. No support for MPI (parallel) execution
-2. Support for multiple receivers is not ideal (no buffering, hardcoded output)
+#### Current implementation limitations
+1. Rectangular domains and rectangular elements only
+2. No support for MPI (parallel) execution
+3. Support for multiple receivers is not ideal (no buffering, hardcoded output)
+4. No PML support
 
-### 2. How do I get set up? ###
+### 1. Installation ###
 
 * Requires a C compiler
 * Requires PETSc (`https://www.mcs.anl.gov/petsc`)
@@ -18,7 +24,7 @@
 make all PETSC_DIR=/path/to/petsc PETSC_ARCH=name-of-petsc-arch
 ```
 
-### 3. Common options ###
+### 2. Usage ###
 
 Options are provided as command line arguments
 
@@ -35,7 +41,7 @@ The above options are all optional.
 Example command line option:
 ```./se2wave -mx 64 -my 64 -border 6 -tmax 0.4 -nt 100000 -of 100```
 
-### 4. Who do I talk to? ###
+### 3. Bug reporting / feature requests ###
 
 * Email: dave.mayhem23@gmail.com
 * Communication via BitBucket: Use `@dmay` in any BitBucket dialogue box.
