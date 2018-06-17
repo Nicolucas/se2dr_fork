@@ -4122,13 +4122,17 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   PetscViewer viewer;
   Vec u,v,a,f,g,Md;
   PetscReal time,dt,time_max;
-  PetscBool psource=PETSC_TRUE,ssource=PETSC_FALSE;
   PetscInt s,nsources;
   SeismicSource *src;
   SeismicSTF *stf;
   PetscInt nrecv;
   PetscReal *xr_list;
+  PetscBool dump_ic_src_vts = PETSC_FALSE;
+  PetscBool ignore_receiver_output = PETSC_FALSE;
   
+  
+  ierr = PetscOptionsGetBool(NULL,NULL,"-dump_ic_src",&dump_ic_src_vts,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-ignore_receiver_output",&ignore_receiver_output,NULL);CHKERRQ(ierr);
   
   /*
     Create the structured mesh for the spectral element method.
@@ -4173,9 +4177,11 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   /*
    Write out the mesh and intial values for the displacement, velocity and acceleration (u,v,a)
   */
-  ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,"uva.vts",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
-  ierr = VecView(u,viewer);CHKERRQ(ierr);
-  ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+  if (dump_ic_src_vts) {
+    ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,"uva.vts",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
+    ierr = VecView(u,viewer);CHKERRQ(ierr);
+    ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+  }
   
   ierr = AssembleBilinearForm_Mass2d(ctx,Md);CHKERRQ(ierr);
   
@@ -4230,9 +4236,11 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   */
   ierr = SeismicSourceEvaluate(0.0,nsources,src,NULL,g);CHKERRQ(ierr);
 
-  ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,"f.vts",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
-  ierr = VecView(g,viewer);CHKERRQ(ierr);
-  ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+  if (dump_ic_src_vts) {
+    ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,"f.vts",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
+    ierr = VecView(g,viewer);CHKERRQ(ierr);
+    ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+  }
   
   /* 
    Define two source time functions
@@ -4325,7 +4333,9 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
     /*
       Write out the u,v,a values at each receiver
     */
-    ierr = RecordUVA_MultipleStations_NearestGLL(ctx,time,nrecv,xr_list,u,v,a);CHKERRQ(ierr);
+    if (!ignore_receiver_output) {
+      ierr = RecordUVA_MultipleStations_NearestGLL(ctx,time,nrecv,xr_list,u,v,a);CHKERRQ(ierr);
+    }
     
     if (k%of == 0) {
       char name[PETSC_MAX_PATH_LEN];
@@ -4364,6 +4374,8 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
     ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
   }
   
+  
+  ierr = PetscFree(xr_list);CHKERRQ(ierr);
   for (s=0; s<nsources; s++) {
     ierr = SeismicSourceDestroy(&src[s]);CHKERRQ(ierr);
     ierr = SeismicSTFDestroy(&stf[s]);CHKERRQ(ierr);
