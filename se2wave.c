@@ -1140,6 +1140,8 @@ PetscErrorCode SpecFECtxCreateMesh(SpecFECtx c,PetscInt dim,PetscInt mx,PetscInt
   } else {
     ierr = SpecFECtxCreateMesh_MPI(c,dim,mx,my,mz,basisorder,ndofs);CHKERRQ(ierr);
   }
+  ierr = DMDASetFieldName(c->dm,0,"_x");CHKERRQ(ierr);
+  ierr = DMDASetFieldName(c->dm,1,"_y");CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -3397,6 +3399,7 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
   PetscReal stf_exp_T;
   
   ierr = SpecFECtxCreate(&ctx);CHKERRQ(ierr);
+  if (ctx->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   p = 2;
   ierr = PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);CHKERRQ(ierr);
   ierr = SpecFECtxCreateMesh(ctx,2,mx,my,PETSC_DECIDE,p,2);CHKERRQ(ierr);
@@ -3409,9 +3412,6 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
   }
   
   ierr = SpecFECtxSetConstantMaterialProperties_Velocity(ctx,4000.0,2000.0,2600.0);CHKERRQ(ierr); // vp,vs,rho
-  
-  ierr = DMDASetFieldName(ctx->dm,0,"_x");CHKERRQ(ierr);
-  ierr = DMDASetFieldName(ctx->dm,1,"_y");CHKERRQ(ierr);
   
   DMCreateGlobalVector(ctx->dm,&u); PetscObjectSetName((PetscObject)u,"disp");
   DMCreateGlobalVector(ctx->dm,&v); PetscObjectSetName((PetscObject)v,"velo");
@@ -3576,6 +3576,7 @@ PetscErrorCode specfem_ex2(PetscInt mx,PetscInt my)
   PetscReal stf_exp_T;
   
   ierr = SpecFECtxCreate(&ctx);CHKERRQ(ierr);
+  if (ctx->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   p = 2;
   ierr = PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);CHKERRQ(ierr);
   ierr = SpecFECtxCreateMesh(ctx,2,mx,my,PETSC_DECIDE,p,2);CHKERRQ(ierr);
@@ -3588,9 +3589,6 @@ PetscErrorCode specfem_ex2(PetscInt mx,PetscInt my)
   }
   
   ierr = SpecFECtxSetConstantMaterialProperties_Velocity(ctx,3200.0,1847.5,2000.0);CHKERRQ(ierr); // vp,vs,rho
-  
-  ierr = DMDASetFieldName(ctx->dm,0,"_x");CHKERRQ(ierr);
-  ierr = DMDASetFieldName(ctx->dm,1,"_y");CHKERRQ(ierr);
   
   DMCreateGlobalVector(ctx->dm,&u); PetscObjectSetName((PetscObject)u,"disp");
   DMCreateGlobalVector(ctx->dm,&v); PetscObjectSetName((PetscObject)v,"velo");
@@ -3741,6 +3739,7 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
   PetscReal stf_exp_T;
   
   ierr = SpecFECtxCreate(&ctx);CHKERRQ(ierr);
+  if (ctx->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   p = 2;
   ierr = PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);CHKERRQ(ierr);
   ierr = SpecFECtxCreateMesh(ctx,2,mx,my,PETSC_DECIDE,p,2);CHKERRQ(ierr);
@@ -3753,9 +3752,6 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
   }
   
   ierr = SpecFECtxSetConstantMaterialProperties_Velocity(ctx,4746.3670317412243 ,2740.2554625435928, 1000.0);CHKERRQ(ierr); // vp,vs,rho
-  
-  ierr = DMDASetFieldName(ctx->dm,0,"_x");CHKERRQ(ierr);
-  ierr = DMDASetFieldName(ctx->dm,1,"_y");CHKERRQ(ierr);
   
   DMCreateGlobalVector(ctx->dm,&u); PetscObjectSetName((PetscObject)u,"disp");
   DMCreateGlobalVector(ctx->dm,&v); PetscObjectSetName((PetscObject)v,"velo");
@@ -3931,6 +3927,7 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
   SeismicSTF stf;
   
   ierr = SpecFECtxCreate(&ctx);CHKERRQ(ierr);
+  if (ctx->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   p = 2;
   ierr = PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);CHKERRQ(ierr);
   ierr = SpecFECtxCreateMesh(ctx,2,mx,my,PETSC_DECIDE,p,2);CHKERRQ(ierr);
@@ -3948,9 +3945,6 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
   }
   
   ierr = SpecFECtxSetConstantMaterialProperties_Velocity(ctx,4746.3670317412243 ,2740.2554625435928, 1000.0);CHKERRQ(ierr); // vp,vs,rho
-  
-  ierr = DMDASetFieldName(ctx->dm,0,"_x");CHKERRQ(ierr);
-  ierr = DMDASetFieldName(ctx->dm,1,"_y");CHKERRQ(ierr);
   
   DMCreateGlobalVector(ctx->dm,&u); PetscObjectSetName((PetscObject)u,"disp");
   DMCreateGlobalVector(ctx->dm,&v); PetscObjectSetName((PetscObject)v,"velo");
@@ -4166,9 +4160,6 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
    More general methods can be easily added.
   */
   ierr = SpecFECtxSetConstantMaterialProperties_Velocity(ctx,4746.3670317412243 ,2740.2554625435928, 1000.0);CHKERRQ(ierr); // vp,vs,rho
-  
-  ierr = DMDASetFieldName(ctx->dm,0,"_x");CHKERRQ(ierr);
-  ierr = DMDASetFieldName(ctx->dm,1,"_y");CHKERRQ(ierr);
   
   DMCreateGlobalVector(ctx->dm,&u); PetscObjectSetName((PetscObject)u,"disp");
   DMCreateGlobalVector(ctx->dm,&v); PetscObjectSetName((PetscObject)v,"velo");
