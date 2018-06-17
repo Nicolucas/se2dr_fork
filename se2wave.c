@@ -234,7 +234,7 @@ PetscErrorCode MatComputeConditionNumber(Mat A,PetscReal *cond)
   
   ierr = KSPComputeEigenvaluesExplicitly(kspV,rank,realpt,complexpt);CHKERRQ(ierr);
   for (i=0; i<rank; i++) {
-    nrmeigs[i] = sqrt( realpt[i]*realpt[i] + complexpt[i]*complexpt[i]);
+    nrmeigs[i] = PetscSqrtReal( realpt[i]*realpt[i] + complexpt[i]*complexpt[i]);
   }
   ierr = PetscSortReal(rank,nrmeigs);CHKERRQ(ierr);
   
@@ -1600,8 +1600,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
           Fvec[0] = fe[2*nid];
           Fvec[1] = fe[2*nid+1];
           
-          nrmS = sqrt(Svec[0]*Svec[0] + Svec[1]*Svec[1]); //printf("nrmS = %1.4e\n",nrmS);
-          nrmF = sqrt(Fvec[0]*Fvec[0] + Fvec[1]*Fvec[1]); //printf("nrmF = %1.4e\n",nrmF);
+          nrmS = PetscSqrtReal(Svec[0]*Svec[0] + Svec[1]*Svec[1]); //printf("nrmS = %1.4e\n",nrmS);
+          nrmF = PetscSqrtReal(Fvec[0]*Fvec[0] + Fvec[1]*Fvec[1]); //printf("nrmF = %1.4e\n",nrmF);
           
           if (nrmF < 1.0e-16) continue;
           
@@ -1802,8 +1802,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d(SpecFECtx c,PetscI
           Fvec[0] = fe[2*nid];
           Fvec[1] = fe[2*nid+1];
           
-          nrmS = sqrt(Svec[0]*Svec[0] + Svec[1]*Svec[1]); //printf("nrmS = %1.4e\n",nrmS);
-          nrmF = sqrt(Fvec[0]*Fvec[0] + Fvec[1]*Fvec[1]); //printf("nrmF = %1.4e\n",nrmF);
+          nrmS = PetscSqrtReal(Svec[0]*Svec[0] + Svec[1]*Svec[1]); //printf("nrmS = %1.4e\n",nrmS);
+          nrmF = PetscSqrtReal(Fvec[0]*Fvec[0] + Fvec[1]*Fvec[1]); //printf("nrmF = %1.4e\n",nrmF);
           
           if (nrmF < 1.0e-16) continue;
           
