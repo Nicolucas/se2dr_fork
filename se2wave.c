@@ -1969,7 +1969,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_Kernel_CSpline(Spe
         } else {
           smooth_dirac = 0.0;
         }
-        smooth_dirac = 10.0/(7.0*M_PI) * smooth_dirac * (1.0/(kernel_h*kernel_h));
+        smooth_dirac = 10.0/(7.0*PETSC_PI) * smooth_dirac * (1.0/(kernel_h*kernel_h));
         
         /* compute moment contribution @ source */
         for (i=0; i<nbasis; i++) {
@@ -3557,7 +3557,7 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
 PetscErrorCode EvaluateRickerWavelet(PetscReal time,PetscReal t0,PetscReal freq,PetscReal amp,PetscReal *psi)
 {
   PetscReal arg,arg2,a,b;
-  arg = M_PI * freq * (time-t0);
+  arg = PETSC_PI * freq * (time-t0);
   arg2 = arg * arg;
   a = 1.0 - 2.0 * arg2;
   b = PetscExpReal(-arg2);
