@@ -2789,7 +2789,7 @@ PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSou
   if (coor[1] > gmax[1]) SETERRQ2(PETSC_COMM_SELF,PETSC_ERR_USER,"Source y-coordinate (%+1.4e) > max(domain).y (%+1.4e)",coor[1],gmax[1]);
 
   ierr = SpecFECtxGetLocalBoundingBox(c,gmin_domain,gmax_domain);CHKERRQ(ierr);
-  printf("rank %d : x[%+1.4e,%+1.4e] - y[%+1.4e,%+1.4e]\n",c->rank,gmin_domain[0],gmax_domain[0],gmin_domain[1],gmax_domain[1]);
+  /*PetscPrintf(PETSC_COMM_SELF,"rank %d : x[%+1.4e,%+1.4e] - y[%+1.4e,%+1.4e]\n",c->rank,gmin_domain[0],gmax_domain[0],gmin_domain[1],gmax_domain[1]);*/
   
   source_found = PETSC_TRUE;
   eowner_source = -1;
@@ -2821,7 +2821,7 @@ PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSou
     }
   }
   if (source_found) {
-    printf("source (%+1.4e,%+1.4e) --> element %d | rank %d\n",coor[0],coor[1],eowner_source,rank);
+    PetscPrintf(PETSC_COMM_SELF,"[SeismicSource] source (%+1.4e,%+1.4e) --> element %d | rank %d\n",coor[0],coor[1],eowner_source,rank);
   }
   
   /* check for duplicates */
@@ -2842,7 +2842,9 @@ PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSou
     }
     ierr = MPI_Allreduce(&r,&r_min_g,1,MPI_INT,MPI_MIN,PETSC_COMM_WORLD);CHKERRQ(ierr);
     if ( r == r_min_g) {
-      PetscPrintf(PETSC_COMM_SELF,"  + Multiple ranks located source (%+1.4e,%+1.4e) - rank %d claiming ownership\n",coor[0],coor[1],r_min_g);
+      PetscPrintf(PETSC_COMM_SELF,"[SeismicSource]  + Multiple ranks located source (%+1.4e,%+1.4e) - rank %d claiming ownership\n",coor[0],coor[1],r_min_g);
+      PetscPrintf(PETSC_COMM_SELF,"[SeismicSource]  + Multiple ranks located source **** WARNING: This may produce results which slightly differ from a sequential run. ****\n");
+      PetscPrintf(PETSC_COMM_SELF,"[SeismicSource]  + Multiple ranks located source **** WARNING: To remove solution variations, suggest you slightly shift the source location. ****\n");
     }
     
     /* mark non-owning ranks as not claiming source */
@@ -2929,8 +2931,8 @@ PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSou
     ierr = VecRestoreArrayRead(coordinates,&LA_coor);CHKERRQ(ierr);
     closest_qp = min_qp;
     src->closest_gll = closest_qp;
-    printf("source --> closest_gll %d xi: (%+1.4e,%+1.4e) [%d,%d] \n",closest_qp,c->xi1d[_ni],c->xi1d[_nj],_ni,_nj);
-    printf("source --> closest_gll %d x:  (%+1.4e,%+1.4e)\n",closest_qp,elcoords[2*min_qp],elcoords[2*min_qp+1]);
+    PetscPrintf(PETSC_COMM_SELF,"[SeismicSource] source --> closest_gll %d xi: (%+1.4e,%+1.4e) [%d,%d] \n",closest_qp,c->xi1d[_ni],c->xi1d[_nj],_ni,_nj);
+    PetscPrintf(PETSC_COMM_SELF,"[SeismicSource] source --> closest_gll %d x:  (%+1.4e,%+1.4e)\n",closest_qp,elcoords[2*min_qp],elcoords[2*min_qp+1]);
   }
   
   
