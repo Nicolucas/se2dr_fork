@@ -119,7 +119,7 @@ PetscErrorCode CreateGLLCoordsWeights(PetscInt N,PetscInt *_npoints,PetscReal **
   
   // Use the Chebyshev-Gauss-Lobatto nodes as the first guess
   for (i=0; i<N1; i++) {
-    x[i]=cos(M_PI*i/(PetscReal)N);
+    x[i]=PetscCosReal(PETSC_PI*i/(PetscReal)N);
   }
   
   // The Legendre Vandermonde Matrix
@@ -158,7 +158,7 @@ PetscErrorCode CreateGLLCoordsWeights(PetscInt N,PetscInt *_npoints,PetscReal **
     //end
     for (i=0; i<N1; i++) {
       for (k=1; k<N; k++) {
-        P[i+(k+1)*N1] = ( (2.0*(k+1)-1.0)*x[i] * P[i+k*N1] - (k+1.0-1.0) * P[i+(k-1)*N1] ) / (double)(k+1.0);
+        P[i+(k+1)*N1] = ( (2.0*(k+1)-1.0)*x[i] * P[i+k*N1] - (k+1.0-1.0) * P[i+(k-1)*N1] ) / (PetscReal)(k+1.0);
       }
     }
     
@@ -3489,7 +3489,7 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
       
       // moment-time history
       arg = time / stf_exp_T;
-      stf = 1.0 - (1.0 + arg) * exp(-arg);
+      stf = 1.0 - (1.0 + arg) * PetscExpReal(-arg);
     }
     //
     
@@ -3560,7 +3560,7 @@ PetscErrorCode EvaluateRickerWavelet(PetscReal time,PetscReal t0,PetscReal freq,
   arg = M_PI * freq * (time-t0);
   arg2 = arg * arg;
   a = 1.0 - 2.0 * arg2;
-  b = exp(-arg2);
+  b = PetscExpReal(-arg2);
   *psi = amp * a * b;
   PetscFunctionReturn(0);
 }
@@ -3664,7 +3664,7 @@ PetscErrorCode specfem_ex2(PetscInt mx,PetscInt my)
       
       // moment-time history
       arg = time / stf_exp_T;
-      stf = 1.0 - (1.0 + arg) * exp(-arg);
+      stf = 1.0 - (1.0 + arg) * PetscExpReal(-arg);
     }
     //stf = time;
     printf("STF(%1.4e) = %+1.4e\n",time,stf);
@@ -3835,7 +3835,7 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
       
       // moment-time history
       //arg = time / stf_exp_T;
-      //stf = 1.0 - (1.0 + arg) * exp(-arg);
+      //stf = 1.0 - (1.0 + arg) * PetscExpReal(-arg);
     }
     //stf = time;
     
