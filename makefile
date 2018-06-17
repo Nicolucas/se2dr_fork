@@ -2,7 +2,7 @@
 include ${PETSC_DIR}/${PETSC_ARCH}/lib/petsc/conf/petscvariables
 include ${PETSC_DIR}/${PETSC_ARCH}/lib/petsc/conf/petscrules
 
-CFLAGS = -g -O0
+CFLAGS = -g -O2
 INC = -I. -I${PETSC_DIR}/include ${PETSC_CC_INCLUDES}
 LIB = ${PETSC_LIB}
 
