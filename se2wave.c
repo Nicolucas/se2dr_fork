@@ -4129,6 +4129,8 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   PetscReal *xr_list;
   PetscBool dump_ic_src_vts = PETSC_FALSE;
   PetscBool ignore_receiver_output = PETSC_FALSE;
+  PetscReal nrm,max,min;
+  char vts_fname[PETSC_MAX_PATH_LEN];
   
   
   ierr = PetscOptionsGetBool(NULL,NULL,"-dump_ic_src",&dump_ic_src_vts,NULL);CHKERRQ(ierr);
@@ -4319,8 +4321,6 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
     ierr = VecAXPY(v,0.5*dt,a);CHKERRQ(ierr); /* v_{n+1} = v' + 0.5.dt.a_{n+1} */
     
     if (k%100 == 0) {
-      PetscReal nrm,max,min;
-      
       PetscPrintf(PETSC_COMM_WORLD,"[step %9D] time = %1.4e : dt = %1.4e \n",k,time,dt);
       VecNorm(u,NORM_2,&nrm);
       VecMin(u,0,&min);
@@ -4338,10 +4338,8 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
     }
     
     if (k%of == 0) {
-      char name[PETSC_MAX_PATH_LEN];
-      
-      PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4d.vts",k);
-      ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
+      ierr = PetscSNPrintf(vts_fname,PETSC_MAX_PATH_LEN-1,"step-%.4D.vts",k);CHKERRQ(ierr);
+      ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,vts_fname,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
       ierr = VecView(u,viewer);CHKERRQ(ierr);
       ierr = VecView(v,viewer);CHKERRQ(ierr);
       ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
@@ -4351,28 +4349,20 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
       break;
     }
   }
-  {
-    PetscReal nrm,max,min;
-    
-    PetscPrintf(PETSC_COMM_WORLD,"[step %9D] time = %1.4e : dt = %1.4e \n",k,time,dt);
-    VecNorm(u,NORM_2,&nrm);
-    VecMin(u,0,&min);
-    VecMax(u,0,&max); PetscPrintf(PETSC_COMM_WORLD,"  [displacement] max = %+1.4e : min = %+1.4e : l2 = %+1.4e \n",max,min,nrm);
-    VecNorm(v,NORM_2,&nrm);
-    VecMin(v,0,&min);
-    VecMax(v,0,&max); PetscPrintf(PETSC_COMM_WORLD,"  [velocity]     max = %+1.4e : min = %+1.4e : l2 = %+1.4e \n",max,min,nrm);
-  }
+  PetscPrintf(PETSC_COMM_WORLD,"[step %9D] time = %1.4e : dt = %1.4e \n",k,time,dt);
+  VecNorm(u,NORM_2,&nrm);
+  VecMin(u,0,&min);
+  VecMax(u,0,&max); PetscPrintf(PETSC_COMM_WORLD,"  [displacement] max = %+1.4e : min = %+1.4e : l2 = %+1.4e \n",max,min,nrm);
+  VecNorm(v,NORM_2,&nrm);
+  VecMin(v,0,&min);
+  VecMax(v,0,&max); PetscPrintf(PETSC_COMM_WORLD,"  [velocity]     max = %+1.4e : min = %+1.4e : l2 = %+1.4e \n",max,min,nrm);
   
   /* plot last snapshot */
-  {
-    char name[PETSC_MAX_PATH_LEN];
-    
-    PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4d.vts",k);
-    ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
-    ierr = VecView(u,viewer);CHKERRQ(ierr);
-    ierr = VecView(v,viewer);CHKERRQ(ierr);
-    ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
-  }
+  ierr = PetscSNPrintf(vts_fname,PETSC_MAX_PATH_LEN-1,"step-%.4D.vts",k);CHKERRQ(ierr);
+  ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,vts_fname,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
+  ierr = VecView(u,viewer);CHKERRQ(ierr);
+  ierr = VecView(v,viewer);CHKERRQ(ierr);
+  ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
   
   
   ierr = PetscFree(xr_list);CHKERRQ(ierr);
