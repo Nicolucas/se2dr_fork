@@ -4199,7 +4199,7 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   /* configure source 1 */
   {
     PetscReal moment[] = { 0.0, 0.0, 0.0, 0.0 }; /* initialize moment tensor to 0 */
-    PetscReal source_coor[] = { 0.0, 100.0 }; /* define source location */
+    PetscReal source_coor[] = { 0.1, 100.1 }; /* define source location */
     PetscReal M;
     
     M = 1000.0; /* gar6more input usings M/rho = 1 */
@@ -4214,7 +4214,7 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   /* configure source 2 */
   {
     PetscReal moment[] = { 0.0, 0.0, 0.0, 0.0 }; /* initialize moment tensor to 0 */
-    PetscReal source_coor[] = { 400.0, 400.0 }; /* define source location */
+    PetscReal source_coor[] = { 400.1, 400.1 }; /* define source location */
     PetscReal M;
     
     M = 1000.0; /* gar6more input usings M/rho = 1 */
@@ -4237,7 +4237,7 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
    Write out the representation of the sources using STF() = 1.0 for all sources.
    Requires a dummy evaluation.
   */
-  ierr = SeismicSourceEvaluate(0.0,1,src,NULL,g);CHKERRQ(ierr);
+  ierr = SeismicSourceEvaluate(0.0,nsources,src,NULL,g);CHKERRQ(ierr);
 
   ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,"f.vts",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
   ierr = VecView(g,viewer);CHKERRQ(ierr);
@@ -4305,7 +4305,7 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
     ierr = VecAXPY(v,0.5*dt,a);CHKERRQ(ierr); /* v' = v_{n} + 0.5.dt.a_{n} */
     
     /* Evaluate source time function, S(t_{n+1}) */
-    ierr = SeismicSourceEvaluate(time,1,src,stf,g);CHKERRQ(ierr);
+    ierr = SeismicSourceEvaluate(time,nsources,src,stf,g);CHKERRQ(ierr);
     
     /* Compute f = -F^{int}( u_{n+1} ) */
     ierr = AssembleLinearForm_ElastoDynamics2d(ctx,u,f);CHKERRQ(ierr);
