@@ -2282,19 +2282,19 @@ PetscErrorCode RecordUV(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,Vec v)
   if (!beenhere) {
     switch (c->source_implementation) {
       case -1:
-      sprintf(filename,"defaultsource-receiverCP-%dx%d-p%d.dat",c->mx_g,c->my_g,c->basisorder);
+      ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"defaultsource-receiverCP-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
       break;
       case 0:
-      sprintf(filename,"deltasource-receiverCP-%dx%d-p%d.dat",c->mx_g,c->my_g,c->basisorder);
+      ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"deltasource-receiverCP-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
       break;
       case 1:
-      sprintf(filename,"closestqpsource-receiverCP-%dx%d-p%d.dat",c->mx_g,c->my_g,c->basisorder);
+      ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"closestqpsource-receiverCP-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
       break;
       case 2:
-      sprintf(filename,"csplinesource-receiverCP-%dx%d-p%d.dat",c->mx_g,c->my_g,c->basisorder);
+      ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"csplinesource-receiverCP-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
       break;
       case 3:
-      sprintf(filename,"p0source-receiverCP-%dx%d-p%d.dat",c->mx_g,c->my_g,c->basisorder);
+      ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"p0source-receiverCP-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
       break;
       default:
       break;
@@ -2376,19 +2376,19 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
   if (!beenhere) {
     switch (c->source_implementation) {
       case -1:
-      sprintf(filename,"defaultsource-receiver-%dx%d-p%d.dat",c->mx_g,c->my_g,c->basisorder);
+      ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"defaultsource-receiver-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
       break;
       case 0:
-      sprintf(filename,"deltasource-receiver-%dx%d-p%d.dat",c->mx_g,c->my_g,c->basisorder);
+      ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"deltasource-receiver-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
       break;
       case 1:
-      sprintf(filename,"closestqpsource-receiver-%dx%d-p%d.dat",c->mx_g,c->my_g,c->basisorder);
+      ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"closestqpsource-receiver-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
       break;
       case 2:
-      sprintf(filename,"csplinesource-receiver-%dx%d-p%d.dat",c->mx_g,c->my_g,c->basisorder);
+      ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"csplinesource-receiver-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
       break;
       case 3:
-      sprintf(filename,"p0source-receiver-%dx%d-p%d.dat",c->mx_g,c->my_g,c->basisorder);
+      ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"p0source-receiver-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
       break;
       default:
       break;
@@ -2517,7 +2517,7 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_SEQ(SpecFECtx c,PetscReal t
     PetscReal gmin[3],gmax[3],dx,dy,sep2min,sep2;
     PetscInt ni,nj,ei,ej,n,nid,eid,*element,*elbasis;
     
-    sprintf(filename,"closestqpsource-receiverCP-uva-%dx%d-p%d.dat",c->mx_g,c->my_g,c->basisorder);
+    ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"closestqpsource-receiverCP-uva-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
     ierr = PetscMalloc1(nr,&nid_list);CHKERRQ(ierr);
     
     ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
@@ -2622,7 +2622,7 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
     PetscReal       gmin[3],gmax[3],gmin_domain[3],gmax_domain[3],dx,dy,sep2min,sep2;
     PetscInt        ni,nj,ei,ej,n,nid,eid,*element,*elbasis;
     
-    sprintf(filename,"closestqpsource-receiverCP-uva-%dx%d-p%d-rank%d.dat",c->mx_g,c->my_g,c->basisorder,c->rank);
+    ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"closestqpsource-receiverCP-uva-%Dx%D-p%D-rank%d.dat",c->mx_g,c->my_g,c->basisorder,(int)c->rank);CHKERRQ(ierr);
     ierr = PetscMalloc1(nr,&nid_list);CHKERRQ(ierr);
     for (r=0; r<nr; r++) {
       nid_list[r] = -1;
@@ -2727,7 +2727,7 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
     FILE *fp_meta = NULL;
     int *owned,*owned_g;
     
-    PetscSNPrintf(metafname,PETSC_MAX_PATH_LEN-1,"closestqpsource-receiverCP-uva-%dx%d-p%d.mpimeta",c->mx_g,c->my_g,c->basisorder,c->size);
+    ierr = PetscSNPrintf(metafname,PETSC_MAX_PATH_LEN-1,"closestqpsource-receiverCP-uva-%Dx%D-p%D.mpimeta",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
     
     ierr = PetscMalloc1(nr,&owned);CHKERRQ(ierr);
     ierr = PetscMalloc1(nr,&owned_g);CHKERRQ(ierr);
@@ -3520,7 +3520,7 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
     if (k%of == 0) {
       char name[PETSC_MAX_PATH_LEN];
       
-      PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4d.vts",k);
+      ierr = PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4D.vts",k);CHKERRQ(ierr);
       ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
       ierr = VecView(u,viewer);CHKERRQ(ierr);
       ierr = VecView(v,viewer);CHKERRQ(ierr);
@@ -3536,7 +3536,7 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
   {
     char name[PETSC_MAX_PATH_LEN];
     
-    PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4d.vts",k);
+    ierr = PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4D.vts",k);CHKERRQ(ierr);
     ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
     ierr = VecView(u,viewer);CHKERRQ(ierr);
     ierr = VecView(v,viewer);CHKERRQ(ierr);
@@ -3694,7 +3694,7 @@ PetscErrorCode specfem_ex2(PetscInt mx,PetscInt my)
     if (k%of == 0) {
       char name[PETSC_MAX_PATH_LEN];
       
-      PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4d.vts",k);
+      ierr = PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4D.vts",k);CHKERRQ(ierr);
       ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
       ierr = VecView(u,viewer);CHKERRQ(ierr);
       ierr = VecView(v,viewer);CHKERRQ(ierr);
@@ -3710,7 +3710,7 @@ PetscErrorCode specfem_ex2(PetscInt mx,PetscInt my)
   {
     char name[PETSC_MAX_PATH_LEN];
     
-    PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4d.vts",k);
+    ierr = PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4D.vts",k);CHKERRQ(ierr);
     ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
     ierr = VecView(u,viewer);CHKERRQ(ierr);
     ierr = VecView(v,viewer);CHKERRQ(ierr);
@@ -3869,7 +3869,7 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
     if (k%of == 0) {
       char name[PETSC_MAX_PATH_LEN];
       
-      PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4d.vts",k);
+      ierr = PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4D.vts",k);CHKERRQ(ierr);
       ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
       ierr = VecView(u,viewer);CHKERRQ(ierr);
       ierr = VecView(v,viewer);CHKERRQ(ierr);
@@ -3897,7 +3897,7 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
   {
     char name[PETSC_MAX_PATH_LEN];
     
-    PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4d.vts",k);
+    ierr = PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4D.vts",k);CHKERRQ(ierr);
     ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
     ierr = VecView(u,viewer);CHKERRQ(ierr);
     ierr = VecView(v,viewer);CHKERRQ(ierr);
@@ -4068,7 +4068,7 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
     if (k%of == 0) {
       char name[PETSC_MAX_PATH_LEN];
       
-      PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4d.vts",k);
+      ierr = PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4D.vts",k);CHKERRQ(ierr);
       ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
       ierr = VecView(u,viewer);CHKERRQ(ierr);
       ierr = VecView(v,viewer);CHKERRQ(ierr);
@@ -4095,7 +4095,7 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
   {
     char name[PETSC_MAX_PATH_LEN];
     
-    PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4d.vts",k);
+    ierr = PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4D.vts",k);CHKERRQ(ierr);
     ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
     ierr = VecView(u,viewer);CHKERRQ(ierr);
     ierr = VecView(v,viewer);CHKERRQ(ierr);
