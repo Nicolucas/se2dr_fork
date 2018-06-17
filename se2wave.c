@@ -2267,7 +2267,7 @@ PetscErrorCode ElastoDynamicsComputeTimeStep_2d(SpecFECtx ctx,PetscReal *_dt)
 
 PetscErrorCode RecordUV(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,Vec v)
 {
-  FILE *fp;
+  FILE *fp = NULL;
   PetscReal gmin[3],gmax[3],dx,dy,sep2min,sep2;
   const PetscReal *LA_u,*LA_v,*LA_c;
   Vec coor;
@@ -2329,6 +2329,7 @@ PetscErrorCode RecordUV(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,Vec v)
   
   if (!beenhere) {
     fp = fopen(filename,"w");
+    if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
     fprintf(fp,"# SpecFECtx meta data\n");
     fprintf(fp,"#   mx %d : my %d : basis order %d\n",c->mx_g,c->my_g,c->basisorder);
     fprintf(fp,"#   source implementation %d\n",c->source_implementation);
@@ -2341,6 +2342,7 @@ PetscErrorCode RecordUV(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,Vec v)
     beenhere = PETSC_TRUE;
   } else {
     fp = fopen(filename,"a");
+    if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
   }
   
   ierr = VecGetArrayRead(u,&LA_u);CHKERRQ(ierr);
@@ -2359,7 +2361,7 @@ PetscErrorCode RecordUV(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,Vec v)
 
 PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,Vec v)
 {
-  FILE *fp;
+  FILE *fp = NULL;
   PetscReal gmin[3],gmax[3],dx,dy,ur[2],vr[2];
   const PetscReal *LA_u,*LA_v;
   static PetscBool beenhere = PETSC_FALSE;
@@ -2393,6 +2395,7 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
   
   if (!beenhere) {
     fp = fopen(filename,"w");
+    if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
     fprintf(fp,"# SpecFECtx meta data\n");
     fprintf(fp,"#   mx %d : my %d : basis order %d\n",c->mx_g,c->my_g,c->basisorder);
     fprintf(fp,"#   source implementation %d\n",c->source_implementation);
@@ -2403,6 +2406,7 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
     fprintf(fp,"#   time ux uy vx vy\n");
   } else {
     fp = fopen(filename,"a");
+    if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
   }
   
   /* get containing element */
@@ -2495,7 +2499,7 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
 
 PetscErrorCode RecordUVA_MultipleStations_NearestGLL_SEQ(SpecFECtx c,PetscReal time,PetscInt nr,PetscReal xr[],Vec u,Vec v,Vec a)
 {
-  FILE             *fp;
+  FILE             *fp = NULL;
   const PetscReal  *LA_u,*LA_v,*LA_a;
   static PetscBool beenhere = PETSC_FALSE;
   static char      filename[PETSC_MAX_PATH_LEN];
@@ -2554,6 +2558,7 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_SEQ(SpecFECtx c,PetscReal t
     }
   
     fp = fopen(filename,"w");
+    if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
     fprintf(fp,"# SpecFECtx meta data\n");
     fprintf(fp,"#   mx %d : my %d : basis order %d\n",c->mx_g,c->my_g,c->basisorder);
     fprintf(fp,"# Receiver meta data\n");
@@ -2574,6 +2579,7 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_SEQ(SpecFECtx c,PetscReal t
     beenhere = PETSC_TRUE;
   } else {
     fp = fopen(filename,"a");
+    if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
   }
   
   ierr = VecGetArrayRead(u,&LA_u);CHKERRQ(ierr);
