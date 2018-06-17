@@ -285,7 +285,7 @@ PetscErrorCode TabulateBasis1d_CLEGENDRE(PetscInt npoints,PetscReal xi[],PetscIn
     
     cnt = 0;
     for (i=0; i<nbasis; i++) {
-      Aij = pow(xil,i);
+      Aij = PetscPowReal(xil,(PetscReal)i);
       ierr = MatSetValue(A,k,cnt,Aij,INSERT_VALUES);CHKERRQ(ierr);
       cnt++;
     }
@@ -339,7 +339,7 @@ PetscErrorCode TabulateBasis1d_CLEGENDRE(PetscInt npoints,PetscReal xi[],PetscIn
     /* generate all monomials for point, p */
     cnt = 0;
     for (i=0; i<nbasis; i++) {
-      monomials[cnt] = pow((double)xi[p],(double)i);
+      monomials[cnt] = PetscPowReal((PetscReal)xi[p],(PetscReal)i);
       cnt++;
     }
     
@@ -419,7 +419,7 @@ PetscErrorCode TabulateBasisDerivatives1d_CLEGENDRE(PetscInt npoints,PetscReal x
     
     cnt = 0;
     for (i=0; i<nbasis; i++) {
-      Aij = pow(xil,i);
+      Aij = PetscPowReal(xil,(PetscReal)i);
       ierr = MatSetValue(A,k,cnt,Aij,INSERT_VALUES);CHKERRQ(ierr);
       cnt++;
     }
@@ -478,7 +478,7 @@ PetscErrorCode TabulateBasisDerivatives1d_CLEGENDRE(PetscInt npoints,PetscReal x
       if (i == 0) {
         dm_dx = 0.0;
         } else {
-          dm_dx = ((double)i)*pow((double)xi[p],(double)(i-1));
+          dm_dx = ((PetscReal)i)*PetscPowReal((PetscReal)xi[p],(PetscReal)(i-1));
         }
       
       monomials[cnt] = dm_dx;
