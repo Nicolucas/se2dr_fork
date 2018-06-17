@@ -3413,12 +3413,12 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
   
   ierr = SpecFECtxSetConstantMaterialProperties_Velocity(ctx,4000.0,2000.0,2600.0);CHKERRQ(ierr); // vp,vs,rho
   
-  DMCreateGlobalVector(ctx->dm,&u); PetscObjectSetName((PetscObject)u,"disp");
-  DMCreateGlobalVector(ctx->dm,&v); PetscObjectSetName((PetscObject)v,"velo");
-  DMCreateGlobalVector(ctx->dm,&a); PetscObjectSetName((PetscObject)a,"accl");
-  DMCreateGlobalVector(ctx->dm,&f);
-  DMCreateGlobalVector(ctx->dm,&g);
-  DMCreateGlobalVector(ctx->dm,&Md);
+  ierr = DMCreateGlobalVector(ctx->dm,&u);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)u,"disp");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&v);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)v,"velo");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&a);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)a,"accl");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&f);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)f,"f");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&g);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)g,"g");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&Md);CHKERRQ(ierr);
   
   ierr = VecZeroEntries(u);CHKERRQ(ierr);
   
@@ -3590,12 +3590,12 @@ PetscErrorCode specfem_ex2(PetscInt mx,PetscInt my)
   
   ierr = SpecFECtxSetConstantMaterialProperties_Velocity(ctx,3200.0,1847.5,2000.0);CHKERRQ(ierr); // vp,vs,rho
   
-  DMCreateGlobalVector(ctx->dm,&u); PetscObjectSetName((PetscObject)u,"disp");
-  DMCreateGlobalVector(ctx->dm,&v); PetscObjectSetName((PetscObject)v,"velo");
-  DMCreateGlobalVector(ctx->dm,&a); PetscObjectSetName((PetscObject)a,"accl");
-  DMCreateGlobalVector(ctx->dm,&f); PetscObjectSetName((PetscObject)f,"f");
-  DMCreateGlobalVector(ctx->dm,&g); PetscObjectSetName((PetscObject)g,"g");
-  DMCreateGlobalVector(ctx->dm,&Md);
+  ierr = DMCreateGlobalVector(ctx->dm,&u);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)u,"disp");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&v);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)v,"velo");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&a);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)a,"accl");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&f);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)f,"f");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&g);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)g,"g");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&Md);CHKERRQ(ierr);
   
   ierr = VecZeroEntries(u);CHKERRQ(ierr);
   
@@ -3753,12 +3753,12 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
   
   ierr = SpecFECtxSetConstantMaterialProperties_Velocity(ctx,4746.3670317412243 ,2740.2554625435928, 1000.0);CHKERRQ(ierr); // vp,vs,rho
   
-  DMCreateGlobalVector(ctx->dm,&u); PetscObjectSetName((PetscObject)u,"disp");
-  DMCreateGlobalVector(ctx->dm,&v); PetscObjectSetName((PetscObject)v,"velo");
-  DMCreateGlobalVector(ctx->dm,&a); PetscObjectSetName((PetscObject)a,"accl");
-  DMCreateGlobalVector(ctx->dm,&f); PetscObjectSetName((PetscObject)f,"f");
-  DMCreateGlobalVector(ctx->dm,&g); PetscObjectSetName((PetscObject)g,"g");
-  DMCreateGlobalVector(ctx->dm,&Md);
+  ierr = DMCreateGlobalVector(ctx->dm,&u);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)u,"disp");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&v);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)v,"velo");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&a);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)a,"accl");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&f);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)f,"f");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&g);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)g,"g");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&Md);CHKERRQ(ierr);
   
   ierr = VecZeroEntries(u);CHKERRQ(ierr);
   
@@ -3946,12 +3946,12 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
   
   ierr = SpecFECtxSetConstantMaterialProperties_Velocity(ctx,4746.3670317412243 ,2740.2554625435928, 1000.0);CHKERRQ(ierr); // vp,vs,rho
   
-  DMCreateGlobalVector(ctx->dm,&u); PetscObjectSetName((PetscObject)u,"disp");
-  DMCreateGlobalVector(ctx->dm,&v); PetscObjectSetName((PetscObject)v,"velo");
-  DMCreateGlobalVector(ctx->dm,&a); PetscObjectSetName((PetscObject)a,"accl");
-  DMCreateGlobalVector(ctx->dm,&f); PetscObjectSetName((PetscObject)f,"f");
-  DMCreateGlobalVector(ctx->dm,&g); PetscObjectSetName((PetscObject)g,"g");
-  DMCreateGlobalVector(ctx->dm,&Md);
+  ierr = DMCreateGlobalVector(ctx->dm,&u);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)u,"disp");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&v);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)v,"velo");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&a);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)a,"accl");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&f);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)f,"f");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&g);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)g,"g");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&Md);CHKERRQ(ierr);
   
   ierr = VecZeroEntries(u);CHKERRQ(ierr);
   
@@ -4161,12 +4161,12 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   */
   ierr = SpecFECtxSetConstantMaterialProperties_Velocity(ctx,4746.3670317412243 ,2740.2554625435928, 1000.0);CHKERRQ(ierr); // vp,vs,rho
   
-  DMCreateGlobalVector(ctx->dm,&u); PetscObjectSetName((PetscObject)u,"disp");
-  DMCreateGlobalVector(ctx->dm,&v); PetscObjectSetName((PetscObject)v,"velo");
-  DMCreateGlobalVector(ctx->dm,&a); PetscObjectSetName((PetscObject)a,"accl");
-  DMCreateGlobalVector(ctx->dm,&f); PetscObjectSetName((PetscObject)f,"f");
-  DMCreateGlobalVector(ctx->dm,&g); PetscObjectSetName((PetscObject)g,"g");
-  DMCreateGlobalVector(ctx->dm,&Md);
+  ierr = DMCreateGlobalVector(ctx->dm,&u);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)u,"disp");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&v);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)v,"velo");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&a);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)a,"accl");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&f);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)f,"f");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&g);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)g,"g");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&Md);CHKERRQ(ierr);
   
   ierr = VecZeroEntries(u);CHKERRQ(ierr);
   
