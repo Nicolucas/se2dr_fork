@@ -5,8 +5,7 @@
 * Provides a toy implementation of the spectral element method in 2D for wave propagation
 
 #### Current design limitations ####
-1. No support for MPI (parallel) execution
-2. Support for multiple receivers is not ideal (no buffering, hardcoded output)
+1. Support for multiple receivers is not ideal (no buffering, hardcoded output)
 
 ### 2. How do I get set up? ###
 
