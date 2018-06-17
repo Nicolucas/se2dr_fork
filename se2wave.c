@@ -2674,6 +2674,7 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
     }
     
     fp = fopen(filename,"w");
+    if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
     fprintf(fp,"# SpecFECtx meta data\n");
     fprintf(fp,"#   mx %d : my %d : basis order %d\n",c->mx_g,c->my_g,c->basisorder);
     fprintf(fp,"# Receiver meta data\n");
@@ -2709,13 +2710,46 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
     }
     
     ierr = VecRestoreArrayRead(coor,&LA_c);CHKERRQ(ierr);
-    beenhere = PETSC_TRUE;
-  } else {
-    if (nr_local != 0) {
-      fp = fopen(filename,"a");
-    }
+    fclose(fp);
+    fp = NULL;
   }
   
+  if (!beenhere) {
+    char metafname[PETSC_MAX_PATH_LEN];
+    FILE *fp_meta = NULL;
+    int *owned,*owned_g;
+    
+    PetscSNPrintf(metafname,PETSC_MAX_PATH_LEN-1,"closestqpsource-receiverCP-uva-%dx%d-p%d.mpimeta",c->mx_g,c->my_g,c->basisorder,c->size);
+    
+    ierr = PetscMalloc1(nr,&owned);CHKERRQ(ierr);
+    ierr = PetscMalloc1(nr,&owned_g);CHKERRQ(ierr);
+    for (r=0; r<nr; r++) {
+      owned[r] = -1;
+      if (nid_list[r] != -1) { owned[r] = (int)c->rank; }
+    }
+    ierr = MPI_Allreduce(owned,owned_g,nr,MPI_INT,MPI_MAX,PETSC_COMM_WORLD);CHKERRQ(ierr);
+    
+    if (c->rank == 0) {
+      fp_meta = fopen(metafname,"w");
+      if (!fp_meta) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",metafname);
+    
+      fprintf(fp_meta,"# SpecFECtx parallel/MPI meta data\n");
+      fprintf(fp_meta,"#   mx %d : my %d : basis order %d\n",c->mx_g,c->my_g,c->basisorder);
+      fprintf(fp_meta,"# Receiver meta data\n");
+      fprintf(fp_meta,"#   + number receiver locations: %d\n",nr);
+      for (r=0; r<nr; r++) {
+        fprintf(fp_meta,"#   + receiver [%d]: mapped to MPI rank %d\n",r,owned_g[r]);
+      }
+      
+      fclose(fp_meta);
+    }
+    
+    ierr = PetscFree(owned_g);CHKERRQ(ierr);
+    ierr = PetscFree(owned);CHKERRQ(ierr);
+  }
+  
+  beenhere = PETSC_TRUE;
+
   ierr = DMGetLocalVector(c->dm,&lu);CHKERRQ(ierr);
   ierr = DMGetLocalVector(c->dm,&lv);CHKERRQ(ierr);
   ierr = DMGetLocalVector(c->dm,&la);CHKERRQ(ierr);
@@ -2732,12 +2766,20 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
   ierr = VecGetArrayRead(la,&LA_a);CHKERRQ(ierr);
   
   if (nr_local != 0) {
+    fp = fopen(filename,"a");
+    if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
+  
     fprintf(fp,"%1.4e",time);
     for (r=0; r<nr; r++) {
       if (nid_list[r] == -1) { continue; }
       fprintf(fp," %+1.8e %+1.8e %+1.8e %+1.8e %+1.8e %+1.8e",LA_u[2*nid_list[r]],LA_u[2*nid_list[r]+1],LA_v[2*nid_list[r]],LA_v[2*nid_list[r]+1],LA_a[2*nid_list[r]],LA_a[2*nid_list[r]+1]);
     }
     fprintf(fp,"\n");
+
+    if (fp) {
+      fclose(fp);
+      fp = NULL;
+    }
   }
   
   ierr = VecRestoreArrayRead(a,&LA_a);CHKERRQ(ierr);
@@ -2748,7 +2790,6 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
   ierr = DMRestoreLocalVector(c->dm,&lv);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(c->dm,&lu);CHKERRQ(ierr);
 
-  if (fp) fclose(fp);
   
   PetscFunctionReturn(0);
 }
