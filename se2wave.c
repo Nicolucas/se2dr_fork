@@ -2234,6 +2234,26 @@ PetscErrorCode ElastoDynamicsComputeTimeStep_2d(SpecFECtx ctx,PetscReal *_dt)
   min_el_r = dx;
   min_el_r = PetscMin(min_el_r,dy);
   
+  /* find smallest dx across the element in local coordinates */
+  {
+    PetscInt  n;
+    PetscReal sep2min,sep2;
+    
+    sep2min = 1.0e32;
+    for (n=0; n<ctx->npe_1d-1; n++) {
+      sep2 = PetscAbsReal(ctx->xi1d[n+1] - ctx->xi1d[n]);
+      /*printf(" xi %+1.4e [n] : xi %+1.4e [n+1] : delta_xi %+1.6e\n",ctx->xi1d[n],ctx->xi1d[n+1],sep2); */
+      if (sep2 < sep2min) {
+        sep2min = sep2;
+      }
+    }
+    
+    polynomial_fac = 1.0;
+    min_el_r = min_el_r * ( sep2min / 2.0 ); /* the factor 2.0 here is associated with the size of the element in the local coordinate system xi \in [-1,+1] */
+  }
+  
+  
+
   
   for (e=0; e<ctx->ne; e++) {
     PetscReal max_el_Vp,value;
@@ -2256,7 +2276,7 @@ PetscErrorCode ElastoDynamicsComputeTimeStep_2d(SpecFECtx ctx,PetscReal *_dt)
       max_el_Vp = PetscMax(max_el_Vp,qp_Vp);
     }
     
-    value = polynomial_fac * 2.0 * min_el_r / max_el_Vp;
+    value = polynomial_fac * 1.0 * min_el_r / max_el_Vp;
     
     dt_min = PetscMin(dt_min,value);
   }
@@ -4282,7 +4302,7 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   PetscPrintf(PETSC_COMM_WORLD,"[se2wave] Requested time period: %1.4e\n",time_max);
   
   ierr = ElastoDynamicsComputeTimeStep_2d(ctx,&dt);CHKERRQ(ierr);
-  dt = dt * 0.2;
+  dt = dt * 0.5;
   ierr = PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);CHKERRQ(ierr);
   PetscPrintf(PETSC_COMM_WORLD,"[se2wave] Using time step size: %1.4e\n",dt);
   
