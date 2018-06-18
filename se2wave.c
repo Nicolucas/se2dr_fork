@@ -2626,30 +2626,35 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_SEQ(SpecFECtx c,PetscReal t
 PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal time,PetscInt nr,PetscReal xr[],Vec u,Vec v,Vec a)
 {
   FILE             *fp = NULL;
-  const PetscReal  *LA_u,*LA_v,*LA_a;
+  const PetscReal  *LA_u,*LA_v,*LA_a,*LA_c;
   static PetscBool beenhere = PETSC_FALSE;
   static char      filename[PETSC_MAX_PATH_LEN];
   static PetscInt  *nid_list = NULL;
+  static PetscInt  *eid_list = NULL;
+  static PetscInt  *gll_list = NULL;
   static PetscInt  nr_local = 0;
-  PetscInt         r;
-  Vec              lu,lv,la;
+  PetscInt         r,k;
+  Vec              lu,lv,la,coor;
   PetscErrorCode   ierr;
   
   
   if (!beenhere) {
-    const PetscReal *LA_c;
-    Vec             coor;
     PetscReal       gmin[3],gmax[3],gmin_domain[3],gmax_domain[3],dx,dy,sep2min,sep2;
-    PetscInt        ni,nj,ei,ej,n,nid,eid,*element,*elbasis;
+    PetscInt        ni,nj,ei,ej,n,nid,gllid,eid,*element,*elbasis;
     
     ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"closestqpsource-receiverCP-uva-%Dx%D-p%D-rank%d.dat",c->mx_g,c->my_g,c->basisorder,(int)c->rank);CHKERRQ(ierr);
     ierr = PetscMalloc1(nr,&nid_list);CHKERRQ(ierr);
+    ierr = PetscMalloc1(nr,&eid_list);CHKERRQ(ierr);
+    ierr = PetscMalloc1(nr,&gll_list);CHKERRQ(ierr);
     for (r=0; r<nr; r++) {
       nid_list[r] = -1;
+      eid_list[r] = -1;
+      gll_list[r] = -1;
     }
-    
+
     ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
     ierr = SpecFECtxGetLocalBoundingBox(c,gmin_domain,gmax_domain);CHKERRQ(ierr);
+    
     ierr = DMGetCoordinatesLocal(c->dm,&coor);CHKERRQ(ierr);
     ierr = VecGetArrayRead(coor,&LA_c);CHKERRQ(ierr);
     
@@ -2682,6 +2687,8 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
       if (ei > c->mx) receiver_found = PETSC_FALSE;
       if (ej > c->my) receiver_found = PETSC_FALSE;
       
+      nid = -1;
+      gllid = -1;
       if (receiver_found) {
         eid = ei + ej * c->mx;
         
@@ -2691,12 +2698,12 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
         
         // find closest //
         sep2min = 1.0e32;
-        nid = -1;
         for (n=0; n<c->npe; n++) {
           sep2  = (xr[2*r+0]-LA_c[2*elbasis[n]])*(xr[2*r+0]-LA_c[2*elbasis[n]]);
           sep2 += (xr[2*r+1]-LA_c[2*elbasis[n]+1])*(xr[2*r+1]-LA_c[2*elbasis[n]+1]);
           if (sep2 < sep2min) {
             nid = elbasis[n];
+            gllid = n;
             sep2min = sep2;
           }
         }
@@ -2731,6 +2738,8 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
 
       if (receiver_found) {
         nid_list[r] = nid;
+        eid_list[r] = eid;
+        gll_list[r] = gllid;
         nr_local++;
       }
     }
@@ -2761,17 +2770,18 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
         
         if (nid_list[r] == -1) { continue; }
 
-        offset = 1 + count*6; /* 1 is for time */
+        offset = 1 + count*7; /* 1 is for time */
         
-        fprintf(fp,"#     ux(%d) uy(%d) vx(%d) vy(%d) ax(%d) ay(%d) -> station [%d]\n",offset+1,offset+2,offset+3,offset+4,offset+5,offset+6,r);
+        fprintf(fp,"#     ux(%d) uy(%d) vx(%d) vy(%d) ax(%d) ay(%d) curl(v) (%d)-> station [%d]\n",offset+1,offset+2,offset+3,offset+4,offset+5,offset+6,offset+7,r);
         count++;
       }
     } else {
       fprintf(fp,"# <note> No receivers found on this sub-domain\n");
       fprintf(fp,"# <note> This file will remain empty\n");
     }
-    
+
     ierr = VecRestoreArrayRead(coor,&LA_c);CHKERRQ(ierr);
+    
     fclose(fp);
     fp = NULL;
   }
@@ -2812,6 +2822,9 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
   
   beenhere = PETSC_TRUE;
 
+  ierr = DMGetCoordinatesLocal(c->dm,&coor);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(coor,&LA_c);CHKERRQ(ierr);
+  
   ierr = DMGetLocalVector(c->dm,&lu);CHKERRQ(ierr);
   ierr = DMGetLocalVector(c->dm,&lv);CHKERRQ(ierr);
   ierr = DMGetLocalVector(c->dm,&la);CHKERRQ(ierr);
@@ -2832,10 +2845,61 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
     if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
   
     fprintf(fp,"%1.4e",time);
+  
+    /* write the components of u,v,a */
     for (r=0; r<nr; r++) {
       if (nid_list[r] == -1) { continue; }
       fprintf(fp," %+1.8e %+1.8e %+1.8e %+1.8e %+1.8e %+1.8e",LA_u[2*nid_list[r]],LA_u[2*nid_list[r]+1],LA_v[2*nid_list[r]],LA_v[2*nid_list[r]+1],LA_a[2*nid_list[r]],LA_a[2*nid_list[r]+1]);
     }
+    
+    /* compute and write the k^th component of the curl(v) */
+    for (r=0; r<nr; r++) {
+      PetscInt eidx,gllidx;
+      PetscReal *elcoor,*elvelocity;
+      PetscReal dvxdy,dvydx,curl;
+      PetscReal *grad_N_xi[2];
+      PetscReal *grad_N_x[2];
+      
+      if (eid_list[r] == -1) { continue; }
+      eidx   = eid_list[r];
+      gllidx = gll_list[r];
+      
+      grad_N_xi[0] = c->dN_dxi[gllidx];
+      grad_N_xi[1] = c->dN_deta[gllidx];
+
+      grad_N_x[0] = c->dN_dx[gllidx];
+      grad_N_x[1] = c->dN_dy[gllidx];
+
+      elcoor = c->elbuf_field;
+      elvelocity = c->elbuf_field2;
+      
+      for (k=0; k<c->npe; k++) {
+        PetscInt basisid = c->element[c->npe*eidx + k];
+
+        elcoor[2*k+0] = LA_c[2*basisid + 0];
+        elcoor[2*k+1] = LA_c[2*basisid + 1];
+
+        elvelocity[2*k+0] = LA_v[2*basisid + 0];
+        elvelocity[2*k+1] = LA_v[2*basisid + 1];
+      }
+
+      ElementEvaluateDerivatives_CellWiseConstant2d(1,c->npe,elcoor,c->npe_1d,&grad_N_xi[0],&grad_N_xi[1],&grad_N_x[0],&grad_N_x[1]);
+      
+      dvxdy = 0.0;
+      dvydx = 0.0;
+      for (k=0; k<c->npe; k++) {
+        PetscReal vx,vy;
+        
+        vx = elvelocity[2*k+0];
+        vy = elvelocity[2*k+1];
+        
+        dvxdy += grad_N_x[0][k] * vx;
+        dvydx += grad_N_x[1][k] * vy;
+      }
+      curl = dvydx - dvxdy;
+      fprintf(fp," %+1.8e",curl);
+    }
+    
     fprintf(fp,"\n");
 
     if (fp) {
@@ -2847,6 +2911,7 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
   ierr = VecRestoreArrayRead(a,&LA_a);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(v,&LA_v);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(u,&LA_u);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(coor,&LA_c);CHKERRQ(ierr);
 
   ierr = DMRestoreLocalVector(c->dm,&la);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(c->dm,&lv);CHKERRQ(ierr);
@@ -2860,11 +2925,11 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL(SpecFECtx c,PetscReal time,
 {
   PetscErrorCode ierr;
   
-  if (c->size == 1) {
-    ierr = RecordUVA_MultipleStations_NearestGLL_SEQ(c,time,nr,xr,u,v,a);CHKERRQ(ierr);
-  } else {
-    ierr = RecordUVA_MultipleStations_NearestGLL_MPI(c,time,nr,xr,u,v,a);CHKERRQ(ierr);
-  }
+  //if (c->size == 1) {
+  //ierr = RecordUVA_MultipleStations_NearestGLL_SEQ(c,time,nr,xr,u,v,a);CHKERRQ(ierr);
+  //} else {
+  ierr = RecordUVA_MultipleStations_NearestGLL_MPI(c,time,nr,xr,u,v,a);CHKERRQ(ierr);
+  //}
   PetscFunctionReturn(0);
 }
 
