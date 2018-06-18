@@ -2654,16 +2654,19 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
     ierr = VecGetArrayRead(coor,&LA_c);CHKERRQ(ierr);
     
     for (r=0; r<nr; r++) {
+      int count,recv_count;
+      PetscBool receiver_found = PETSC_TRUE;
+      int rank,rank_min_g;
       
       if (xr[2*r+0] < gmin[0]) SETERRQ3(PETSC_COMM_SELF,PETSC_ERR_USER,"Receiver %D, x-coordinate (%+1.4e) < min(domain).x (%+1.4e)",r,xr[2*r+0],gmin[0]);
       if (xr[2*r+1] < gmin[1]) SETERRQ3(PETSC_COMM_SELF,PETSC_ERR_USER,"Receiver %D, y-coordinate (%+1.4e) < min(domain).y (%+1.4e)",r,xr[2*r+1],gmin[1]);
       if (xr[2*r+0] > gmax[0]) SETERRQ3(PETSC_COMM_SELF,PETSC_ERR_USER,"Receiver %D, x-coordinate (%+1.4e) > max(domain).x (%+1.4e)",r,xr[2*r+0],gmax[0]);
       if (xr[2*r+1] > gmax[1]) SETERRQ3(PETSC_COMM_SELF,PETSC_ERR_USER,"Receiver %D, y-coordinate (%+1.4e) > max(domain).y (%+1.4e)",r,xr[2*r+1],gmax[1]);
       
-      if (xr[2*r+0] < gmin_domain[0]) continue;
-      if (xr[2*r+1] < gmin_domain[1]) continue;
-      if (xr[2*r+0] > gmax_domain[0]) continue;
-      if (xr[2*r+1] > gmax_domain[1]) continue;
+      if (xr[2*r+0] < gmin_domain[0]) receiver_found = PETSC_FALSE;
+      if (xr[2*r+1] < gmin_domain[1]) receiver_found = PETSC_FALSE;
+      if (xr[2*r+0] > gmax_domain[0]) receiver_found = PETSC_FALSE;
+      if (xr[2*r+1] > gmax_domain[1]) receiver_found = PETSC_FALSE;
       
       dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
       ei = (xr[2*r+0] - gmin_domain[0])/dx;
@@ -2673,32 +2676,63 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
       ej = (xr[2*r+1] - gmin_domain[1])/dy;
       if (ej == c->my) ej--;
       
-      if (ei < 0) continue;
-      if (ej < 0) continue;
+      if (ei < 0) receiver_found = PETSC_FALSE;
+      if (ej < 0) receiver_found = PETSC_FALSE;
       
-      if (ei > c->mx) continue;
-      if (ej > c->my) continue;
+      if (ei > c->mx) receiver_found = PETSC_FALSE;
+      if (ej > c->my) receiver_found = PETSC_FALSE;
       
-      
-      eid = ei + ej * c->mx;
-      
-      /* get element -> node map */
-      element = c->element;
-      elbasis = &element[c->npe*eid];
-      
-      // find closest //
-      sep2min = 1.0e32;
-      nid = -1;
-      for (n=0; n<c->npe; n++) {
-        sep2  = (xr[2*r+0]-LA_c[2*elbasis[n]])*(xr[2*r+0]-LA_c[2*elbasis[n]]);
-        sep2 += (xr[2*r+1]-LA_c[2*elbasis[n]+1])*(xr[2*r+1]-LA_c[2*elbasis[n]+1]);
-        if (sep2 < sep2min) {
-          nid = elbasis[n];
-          sep2min = sep2;
+      if (receiver_found) {
+        eid = ei + ej * c->mx;
+        
+        /* get element -> node map */
+        element = c->element;
+        elbasis = &element[c->npe*eid];
+        
+        // find closest //
+        sep2min = 1.0e32;
+        nid = -1;
+        for (n=0; n<c->npe; n++) {
+          sep2  = (xr[2*r+0]-LA_c[2*elbasis[n]])*(xr[2*r+0]-LA_c[2*elbasis[n]]);
+          sep2 += (xr[2*r+1]-LA_c[2*elbasis[n]+1])*(xr[2*r+1]-LA_c[2*elbasis[n]+1]);
+          if (sep2 < sep2min) {
+            nid = elbasis[n];
+            sep2min = sep2;
+          }
         }
       }
-      nid_list[r] = nid;
-      nr_local++;
+      
+      /* check for duplicates */
+      count = 0;
+      if (receiver_found) {
+        count = 1;
+      }
+      ierr = MPI_Allreduce(&count,&recv_count,1,MPI_INT,MPI_SUM,PETSC_COMM_WORLD);CHKERRQ(ierr);
+      
+      if (recv_count == 0) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"A receiver was defined but no rank claimed it");
+      
+      if (recv_count > 1) {
+        /* resolve duplicates */
+        
+        rank = (int)c->rank;
+        if (!receiver_found) {
+          rank = (int)c->size;
+        }
+        ierr = MPI_Allreduce(&rank,&rank_min_g,1,MPI_INT,MPI_MIN,PETSC_COMM_WORLD);CHKERRQ(ierr);
+        if (rank == rank_min_g) {
+          PetscPrintf(PETSC_COMM_SELF,"[RecordUVA]  + Multiple ranks located receiver (%+1.4e,%+1.4e) - rank %d claiming ownership\n",xr[2*r+0],xr[2*r+1],rank_min_g);
+        }
+        
+        /* mark non-owning ranks as not claiming source */
+        if (rank != rank_min_g) {
+          receiver_found = PETSC_FALSE;
+        }
+      }
+
+      if (receiver_found) {
+        nid_list[r] = nid;
+        nr_local++;
+      }
     }
     
     fp = fopen(filename,"w");
