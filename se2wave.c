@@ -2846,13 +2846,6 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
   
     fprintf(fp,"%1.4e",time);
   
-    /* write the components of u,v,a */
-    for (r=0; r<nr; r++) {
-      if (nid_list[r] == -1) { continue; }
-      fprintf(fp," %+1.8e %+1.8e %+1.8e %+1.8e %+1.8e %+1.8e",LA_u[2*nid_list[r]],LA_u[2*nid_list[r]+1],LA_v[2*nid_list[r]],LA_v[2*nid_list[r]+1],LA_a[2*nid_list[r]],LA_a[2*nid_list[r]+1]);
-    }
-    
-    /* compute and write the k^th component of the curl(v) */
     for (r=0; r<nr; r++) {
       PetscInt eidx,gllidx;
       PetscReal *elcoor,*elvelocity;
@@ -2861,28 +2854,33 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
       PetscReal *grad_N_x[2];
       
       if (eid_list[r] == -1) { continue; }
+      
+      /* write the components of u,v,a */
+      fprintf(fp," %+1.8e %+1.8e %+1.8e %+1.8e %+1.8e %+1.8e",LA_u[2*nid_list[r]],LA_u[2*nid_list[r]+1],LA_v[2*nid_list[r]],LA_v[2*nid_list[r]+1],LA_a[2*nid_list[r]],LA_a[2*nid_list[r]+1]);
+      
+      /* compute and write the k^th component of the curl(v) */
       eidx   = eid_list[r];
       gllidx = gll_list[r];
       
       grad_N_xi[0] = c->dN_dxi[gllidx];
       grad_N_xi[1] = c->dN_deta[gllidx];
-
+      
       grad_N_x[0] = c->dN_dx[gllidx];
       grad_N_x[1] = c->dN_dy[gllidx];
-
+      
       elcoor = c->elbuf_field;
       elvelocity = c->elbuf_field2;
       
       for (k=0; k<c->npe; k++) {
         PetscInt basisid = c->element[c->npe*eidx + k];
-
+        
         elcoor[2*k+0] = LA_c[2*basisid + 0];
         elcoor[2*k+1] = LA_c[2*basisid + 1];
-
+        
         elvelocity[2*k+0] = LA_v[2*basisid + 0];
         elvelocity[2*k+1] = LA_v[2*basisid + 1];
       }
-
+      
       ElementEvaluateDerivatives_CellWiseConstant2d(1,c->npe,elcoor,c->npe_1d,&grad_N_xi[0],&grad_N_xi[1],&grad_N_x[0],&grad_N_x[1]);
       
       dvxdy = 0.0;
