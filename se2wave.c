@@ -2952,8 +2952,8 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
         vx = elvelocity[2*k+0];
         vy = elvelocity[2*k+1];
         
-        dvxdy += grad_N_x[0][k] * vx;
-        dvydx += grad_N_x[1][k] * vy;
+        dvxdy += grad_N_x[1][k] * vx;
+        dvydx += grad_N_x[0][k] * vy;
       }
       curl = dvydx - dvxdy;
       fprintf(fp," %+1.8e",curl);
