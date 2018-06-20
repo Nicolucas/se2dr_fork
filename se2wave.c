@@ -3122,6 +3122,12 @@ PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSou
     PetscInt nbasis;
     Vec coordinates;
     const PetscReal *LA_coor;
+    PetscBool use_nearest_internal_gll = PETSC_TRUE;
+    
+    ierr = PetscOptionsGetBool(NULL,NULL,"-use_nearest_internal_gll",&use_nearest_internal_gll,NULL);CHKERRQ(ierr);
+    if ((c->basisorder == 1) && use_nearest_internal_gll) {
+      SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_USER,"Cannot use basis degree = 1 and approximate the source location based on nearest cell interior GLL point. You must provide the command line option -use_nearest_internal_gll false");
+    }
     
     ierr = DMGetCoordinatesLocal(c->dm,&coordinates);CHKERRQ(ierr);
     ierr = VecGetArrayRead(coordinates,&LA_coor);CHKERRQ(ierr);
@@ -3142,16 +3148,32 @@ PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSou
       elcoords[2*i+1] = LA_coor[2*nidx+1];
     }
     
-    for (nj=1; nj<c->npe_1d-1; nj++) {
-      for (ni=1; ni<c->npe_1d-1; ni++) {
-        nid = ni + nj * c->npe_1d;
-        
-        sep2 = (elcoords[2*nid]-coor[0])*(elcoords[2*nid]-coor[0]) + (elcoords[2*nid+1]-coor[1])*(elcoords[2*nid+1]-coor[1]);
-        if (sep2 < sep2_min) {
-          sep2_min = sep2;
-          min_qp = nid;
-          _ni = ni;
-          _nj = nj;
+    if (use_nearest_internal_gll) {
+      for (nj=1; nj<c->npe_1d-1; nj++) {
+        for (ni=1; ni<c->npe_1d-1; ni++) {
+          nid = ni + nj * c->npe_1d;
+          
+          sep2 = (elcoords[2*nid]-coor[0])*(elcoords[2*nid]-coor[0]) + (elcoords[2*nid+1]-coor[1])*(elcoords[2*nid+1]-coor[1]);
+          if (sep2 < sep2_min) {
+            sep2_min = sep2;
+            min_qp = nid;
+            _ni = ni;
+            _nj = nj;
+          }
+        }
+      }
+    } else {
+      for (nj=0; nj<c->npe_1d; nj++) {
+        for (ni=0; ni<c->npe_1d; ni++) {
+          nid = ni + nj * c->npe_1d;
+          
+          sep2 = (elcoords[2*nid]-coor[0])*(elcoords[2*nid]-coor[0]) + (elcoords[2*nid+1]-coor[1])*(elcoords[2*nid+1]-coor[1]);
+          if (sep2 < sep2_min) {
+            sep2_min = sep2;
+            min_qp = nid;
+            _ni = ni;
+            _nj = nj;
+          }
         }
       }
     }
