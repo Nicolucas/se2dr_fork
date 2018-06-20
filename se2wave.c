@@ -1174,6 +1174,67 @@ PetscErrorCode SpecFECtxSetConstantMaterialProperties_Velocity(SpecFECtx c,Petsc
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode SpecFECtxSetPerturbedMaterialProperties_Velocity(SpecFECtx c,PetscReal Vp0,PetscReal delta_Vp,PetscReal Vs0,PetscReal delta_Vs,PetscReal rho0,PetscReal delta_rho)
+{
+  PetscErrorCode ierr;
+  Vec Vp,Vs,rho;
+  PetscRandom r;
+  const PetscReal *LA_Vp,*LA_Vs,*LA_rho;
+  PetscInt e;
+  
+  ierr = VecCreate(PETSC_COMM_WORLD,&Vp);CHKERRQ(ierr);
+  ierr = VecSetSizes(Vp,c->ne,c->ne_g);CHKERRQ(ierr);
+  ierr = VecSetFromOptions(Vp);CHKERRQ(ierr);
+  ierr = VecDuplicate(Vp,&Vs);CHKERRQ(ierr);
+  ierr = VecDuplicate(Vp,&rho);CHKERRQ(ierr);
+
+  ierr = PetscRandomCreate(PETSC_COMM_WORLD,&r);CHKERRQ(ierr);
+  ierr = PetscRandomSetType(r,PETSCRAND48);CHKERRQ(ierr);
+
+  ierr = PetscRandomSetInterval(r,Vp0-delta_Vp,Vp0+delta_Vp);CHKERRQ(ierr);
+  ierr = PetscRandomSetSeed(r,1);CHKERRQ(ierr);
+  ierr = PetscRandomSeed(r);CHKERRQ(ierr);
+  ierr = VecSetRandom(Vp,r);CHKERRQ(ierr);
+
+  ierr = PetscRandomSetInterval(r,Vs0-delta_Vs,Vs0+delta_Vs);CHKERRQ(ierr);
+  ierr = PetscRandomSetSeed(r,2);CHKERRQ(ierr);
+  ierr = PetscRandomSeed(r);CHKERRQ(ierr);
+  ierr = VecSetRandom(Vs,r);CHKERRQ(ierr);
+  
+  ierr = PetscRandomSetInterval(r,rho0-delta_rho,rho0+delta_rho);CHKERRQ(ierr);
+  ierr = PetscRandomSetSeed(r,3);CHKERRQ(ierr);
+  ierr = PetscRandomSeed(r);CHKERRQ(ierr);
+  ierr = VecSetRandom(rho,r);CHKERRQ(ierr);
+
+  ierr = PetscRandomDestroy(&r);CHKERRQ(ierr);
+
+  ierr = VecGetArrayRead(Vp,&LA_Vp);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(Vs,&LA_Vs);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(rho,&LA_rho);CHKERRQ(ierr);
+  for (e=0; e<c->ne; e++) {
+    PetscReal mu,lambda;
+
+    mu     = LA_Vs[e] * LA_Vs[e] * LA_rho[e];
+    lambda = LA_Vp[e] * LA_Vp[e] * LA_rho[e] - 2.0 * mu;
+    
+    c->cell_data[e].lambda = lambda;
+    c->cell_data[e].mu     = mu;
+    c->cell_data[e].rho    = LA_rho[e];
+  }
+  ierr = VecRestoreArrayRead(rho,&LA_rho);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(Vs,&LA_Vs);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(Vp,&LA_Vp);CHKERRQ(ierr);
+
+  PetscPrintf(PETSC_COMM_WORLD,"  [material]     Vp0 = %1.8e : delta = %+1.8e\n",Vp0,delta_Vp);
+  PetscPrintf(PETSC_COMM_WORLD,"  [material]     Vs0 = %1.8e : delta = %+1.8e\n",Vs0,delta_Vs);
+  PetscPrintf(PETSC_COMM_WORLD,"  [material]    rho0 = %1.8e : delta = %+1.8e\n",rho0,delta_rho);
+  
+  ierr = VecDestroy(&rho);CHKERRQ(ierr);
+  ierr = VecDestroy(&Vs);CHKERRQ(ierr);
+  ierr = VecDestroy(&Vp);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
 void ElementEvaluateGeometry_CellWiseConstant2d(PetscInt npe,PetscReal el_coords[],
                                                 PetscInt nbasis,PetscReal *detJ)
 {
