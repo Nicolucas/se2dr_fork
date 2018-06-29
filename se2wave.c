@@ -3588,6 +3588,210 @@ PetscErrorCode SeismicSTFCreate_Gaussian(PetscReal t0,PetscReal omega,PetscReal 
   PetscFunctionReturn(0);
 }
 
+/* Triangle regularized Yoffe source-time function implementation */
+/*
+ A Kinematic Source-Time Function Compatible with Earthquake Dynamics
+ by Elisa Tinti, Eiichi Fukuyama, Alessio Piatanesi, and Massimo Cocco
+ Bulletin of the Seismological Society of America, 
+ Vol. 95, No. 4, pp. 1211–1223, August 2005, doi: 10.1785/0120040177
+ 
+ Mistakes in the paper:
+ - Last conditional in equations A13, A14 should be t >= tau_R + 2 tau_S
+*/
+typedef struct {
+  PetscReal K;
+  PetscReal D_max,tau_S,tau_R;
+} SeismicSTF_TriRegYoffe;
+
+/* methods for the constants */
+static void reg_yoffe_compute_C1(SeismicSTF_TriRegYoffe *ctx,PetscReal time,PetscReal *C1)
+{
+  PetscReal t1,t2,t3,t4,t5;
+  PetscReal tau_R2;
+  
+  tau_R2 = ctx->tau_R*ctx->tau_R;
+  t1 = 0.5 * time + 0.25 * ctx->tau_R;
+  t2 = time * (ctx->tau_R - time);
+  t3 = time * (1.0 - ctx->tau_R) * ctx->tau_R;
+  t4 = time/ctx->tau_R;
+  t5 = (ctx->tau_R - time)/time;
+  
+  *C1 =  t1 * PetscSqrtReal(t2) + t3 * PetscAsinReal(PetscSqrtReal(t4)) - 0.75 * tau_R2 * PetscAtanReal(PetscSqrtReal(t5));
+}
+
+static void reg_yoffe_compute_C3(SeismicSTF_TriRegYoffe *ctx,PetscReal time,PetscReal *C3)
+{
+  PetscReal t1,t2,t3,t4,t5;
+  PetscReal tau_R2;
+  
+  tau_R2 = ctx->tau_R*ctx->tau_R;
+  t1 = ctx->tau_S - time - 0.5 * ctx->tau_R;
+  t2 = (time - ctx->tau_R) * (ctx->tau_R - time + ctx->tau_S);
+  t3 = ctx->tau_R * (2.0 * ctx->tau_R - 2.0 * time + 2.0 * ctx->tau_S);
+  t4 = (time - ctx->tau_S) / ctx->tau_R;
+  t5 = (ctx->tau_R - time + ctx->tau_S)/(time - ctx->tau_S);
+  
+  *C3 =  t1 * PetscSqrtReal(t2) + t3 * PetscAsinReal(PetscSqrtReal(t4)) + 1.5 * tau_R2 * PetscAtanReal(PetscSqrtReal(t5));
+}
+
+static void reg_yoffe_compute_C4(SeismicSTF_TriRegYoffe *ctx,PetscReal time,PetscReal *C4)
+{
+  PetscReal t1,t2,t3,t4,t5;
+  PetscReal tau_R2;
+  
+  tau_R2 = ctx->tau_R*ctx->tau_R;
+  t1 = -ctx->tau_S + 0.5 * time + 0.25 * ctx->tau_R;
+  t2 = (time - 2.0 * ctx->tau_S) * (ctx->tau_R - time + 2.0 * ctx->tau_S);
+  t3 = ctx->tau_R * (ctx->tau_R + time - 2.0 * ctx->tau_S);
+  t4 = (time - 2.0 * ctx->tau_S) / ctx->tau_R;
+  t5 = (ctx->tau_R - time + 2.0 * ctx->tau_S)/(time - 2.0 * ctx->tau_S);
+  
+  *C4 =  t1 * PetscSqrtReal(t2) + t3 * PetscAsinReal(PetscSqrtReal(t4)) - 1.5 * tau_R2 * PetscAtanReal(PetscSqrtReal(t5));
+}
+
+
+/* For tau_R > 2 tau_S */
+PetscErrorCode SeismicSTFEvaluate_TriRegYoffe_mode1(SeismicSTF stf,PetscReal time,PetscReal *psi)
+{
+  SeismicSTF_TriRegYoffe *ctx = (SeismicSTF_TriRegYoffe*)stf->data;
+  PetscReal C1,C2,C3,C4,C5,C6,tau_R2,phi;
+
+  
+  /* the most common case */
+  if (time >= (ctx->tau_R + 2.0*ctx->tau_S)) {
+    *psi = 0.0;
+    PetscFunctionReturn(0);
+  }
+  
+  C1 = C2 = C3 = C4 = C5 = C6 = 0.0;
+  tau_R2 = ctx->tau_R*ctx->tau_R;
+  
+  if ( (time >= 0.0) && (time < ctx->tau_S) ) {
+    reg_yoffe_compute_C1(ctx,time,&C1);
+    C2 = (3.0/8.0) * PETSC_PI * tau_R2;
+
+    phi = C1 + C2;
+  } else if ( (time >= ctx->tau_S) && (time < 2.0 * ctx->tau_S) ) {
+    reg_yoffe_compute_C1(ctx,time,&C1);
+    C2 = (3.0/8.0) * PETSC_PI * tau_R2;
+    reg_yoffe_compute_C3(ctx,time,&C3);
+
+    phi = C1 - C2 + C3;
+  } else if ( (time >= 2.0* ctx->tau_S) && (time < ctx->tau_R) ) {
+    reg_yoffe_compute_C1(ctx,time,&C1);
+    reg_yoffe_compute_C3(ctx,time,&C3);
+    reg_yoffe_compute_C4(ctx,time,&C4);
+  
+    phi = C1 + C3 + C4;
+  } else if ( (time >= ctx->tau_R) && (time < (ctx->tau_R + ctx->tau_S)) ) {
+    reg_yoffe_compute_C3(ctx,time,&C3);
+    reg_yoffe_compute_C4(ctx,time,&C4);
+    C5 = 0.5 * PETSC_PI * ctx->tau_R * (time - ctx->tau_R);
+    
+    phi = C5 + C3 + C4;
+  } else if ( (time >= (ctx->tau_R + ctx->tau_S)) && (time < (ctx->tau_R + 2.0 * ctx->tau_S)) ) {
+    reg_yoffe_compute_C4(ctx,time,&C4);
+    C6 = 0.5 * PETSC_PI * ctx->tau_R * (2.0 * ctx->tau_S - time + ctx->tau_R);
+
+    phi = C4 + C6;
+  } else { /* time < 0.0 */
+    phi = 0.0;
+  }
+  (*psi) = ctx->K * phi;
+  
+  PetscFunctionReturn(0);
+}
+
+/* For tau_S < tau_R < 2 tau_S */
+PetscErrorCode SeismicSTFEvaluate_TriRegYoffe_mode2(SeismicSTF stf,PetscReal time,PetscReal *psi)
+{
+  SeismicSTF_TriRegYoffe *ctx = (SeismicSTF_TriRegYoffe*)stf->data;
+  PetscReal C1,C2,C3,C4,C5,C6,tau_R2,phi;
+  
+  
+  /* the most common case */
+  if (time >= (ctx->tau_R + 2.0*ctx->tau_S)) {
+    *psi = 0.0;
+    PetscFunctionReturn(0);
+  }
+
+  C1 = C2 = C3 = C4 = C5 = C6 = 0.0;
+  tau_R2 = ctx->tau_R*ctx->tau_R;
+
+  if ( (time >= 0.0) && (time < ctx->tau_S) ) {
+    reg_yoffe_compute_C1(ctx,time,&C1);
+    C2 = (3.0/8.0) * PETSC_PI * tau_R2;
+    
+    phi = C1 + C2;
+  } else if ( (time >= ctx->tau_S) && (time < 2.0 * ctx->tau_S) ) {
+    reg_yoffe_compute_C1(ctx,time,&C1);
+    C2 = (3.0/8.0) * PETSC_PI * tau_R2;
+    reg_yoffe_compute_C3(ctx,time,&C3);
+    
+    phi = C1 - C2 + C3;
+  } else if ( (time >= 2.0* ctx->tau_S) && (time < ctx->tau_R) ) {
+    C2 = (3.0/8.0) * PETSC_PI * tau_R2;
+    reg_yoffe_compute_C3(ctx,time,&C3);
+    C5 = 0.5 * PETSC_PI * ctx->tau_R * (time - ctx->tau_R);
+    
+    phi = C5 + C3 - C2;
+  } else if ( (time >= ctx->tau_R) && (time < (ctx->tau_R + ctx->tau_S)) ) {
+    reg_yoffe_compute_C3(ctx,time,&C3);
+    reg_yoffe_compute_C4(ctx,time,&C4);
+    C5 = 0.5 * PETSC_PI * ctx->tau_R * (time - ctx->tau_R);
+    
+    phi = C5 + C3 + C4;
+  } else if ( (time >= (ctx->tau_R + ctx->tau_S)) && (time < (ctx->tau_R + 2.0 * ctx->tau_S)) ) {
+    reg_yoffe_compute_C4(ctx,time,&C4);
+    C6 = 0.5 * PETSC_PI * ctx->tau_R * (2.0 * ctx->tau_S - time + ctx->tau_R);
+    
+    phi = C4 + C6;
+  } else { /* time < 0.0 */
+    phi = 0.0;
+  }
+  (*psi) = ctx->K * phi;
+  
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SeismicSTFDestroy_Default(SeismicSTF stf)
+{
+  PetscErrorCode ierr;
+  
+  ierr = PetscFree(stf->data);CHKERRQ(ierr);
+  stf->data = NULL;
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SeismicSTFCreate_TriRegYoffe(PetscReal tau_S,PetscReal tau_R,PetscReal D_max,SeismicSTF *s)
+{
+  PetscErrorCode ierr;
+  SeismicSTF stf;
+  SeismicSTF_TriRegYoffe *yoffe;
+  
+  ierr = SeismicSTFCreate("reg_yoffe",&stf);CHKERRQ(ierr);
+  ierr = PetscMalloc1(1,&yoffe);CHKERRQ(ierr);
+  yoffe->tau_S    = tau_S;
+  yoffe->tau_R = tau_R;
+  yoffe->D_max   = D_max;
+
+  yoffe->K = 2.0 / (PETSC_PI * tau_R * tau_S*tau_S);
+
+  
+  stf->data = (void*)yoffe;
+
+  if (tau_R > 2.0 * tau_S) {
+    stf->evaluate = SeismicSTFEvaluate_TriRegYoffe_mode1;
+  } else if (tau_S < tau_R < 2.0 * tau_S) {
+    stf->evaluate = SeismicSTFEvaluate_TriRegYoffe_mode1;
+  } else SETERRQ2(PETSC_COMM_WORLD,PETSC_ERR_USER,"Invalid values for tau_S (%+1.4e) and tau_R(%+1.4e) provided",tau_S,tau_R);
+    
+  stf->destroy = SeismicSTFDestroy_Default;
+  
+  *s = stf;
+  PetscFunctionReturn(0);
+}
+
 PetscErrorCode specfem(PetscInt mx,PetscInt my)
 {
   PetscErrorCode ierr;
