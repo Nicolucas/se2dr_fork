@@ -3757,19 +3757,19 @@ PetscErrorCode SeismicSTFEvaluate_TriRegYoffe_mode2(SeismicSTF stf,PetscReal tim
     C2 = (3.0/8.0) * PETSC_PI * tau_R2;
     
     phi = C1 + C2;
-  } else if ( (time >= ctx->tau_S) && (time < 2.0 * ctx->tau_S) ) {
+  } else if ( (time >= ctx->tau_S) && (time < ctx->tau_R) ) {
     ierr = reg_yoffe_compute_C1(ctx,time,&C1);CHKERRQ(ierr);
     C2 = (3.0/8.0) * PETSC_PI * tau_R2;
     ierr = reg_yoffe_compute_C3(ctx,time,&C3);CHKERRQ(ierr);
     
     phi = C1 - C2 + C3;
-  } else if ( (time >= 2.0* ctx->tau_S) && (time < ctx->tau_R) ) {
+  } else if ( (time >= ctx->tau_R) && (time < 2.0 * ctx->tau_S) ) {
     C2 = (3.0/8.0) * PETSC_PI * tau_R2;
     ierr = reg_yoffe_compute_C3(ctx,time,&C3);CHKERRQ(ierr);
     C5 = 0.5 * PETSC_PI * ctx->tau_R * (time - ctx->tau_R);
     
     phi = C5 + C3 - C2;
-  } else if ( (time >= ctx->tau_R) && (time < (ctx->tau_R + ctx->tau_S)) ) {
+  } else if ( (time >= 2.0 * ctx->tau_S) && (time < (ctx->tau_R + ctx->tau_S)) ) {
     ierr = reg_yoffe_compute_C3(ctx,time,&C3);CHKERRQ(ierr);
     ierr = reg_yoffe_compute_C4(ctx,time,&C4);CHKERRQ(ierr);
     C5 = 0.5 * PETSC_PI * ctx->tau_R * (time - ctx->tau_R);
