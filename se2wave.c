@@ -4830,7 +4830,7 @@ PetscErrorCode test_SeismicSTF(void)
 
   ierr = PetscOptionsGetBool(NULL,NULL,"-stf_ricker",&is_ricker,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-stf_yoffe",&is_yoffe,NULL);CHKERRQ(ierr);
-  if (!is_ricker && !is_yoffe) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"No STF implementation specified. Use one of { -stf_ricker , -stf_yoffe}");
+  if (!is_ricker && !is_yoffe) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"No STF implementation specified. Use one of { -stf_ricker , -stf_yoffe }");
   
   /* Define ricker time functions */
   if (is_ricker) {
