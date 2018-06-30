@@ -3643,8 +3643,6 @@ static PetscErrorCode reg_yoffe_compute_C3(SeismicSTF_TriRegYoffe *ctx,PetscReal
   } else {
     t5 = (ctx->tau_R - time + ctx->tau_S)/(time - ctx->tau_S);
   }
-  //printf("t5:  %+1.12e %+1.12e\n",ctx->tau_R - time + ctx->tau_S,time - ctx->tau_S);
-  //printf("t1,..,t5 %+1.6e %+1.6e %+1.6e %+1.6e %+1.6e\n",t1,t2,t3,t4,t5);
   
   if (t2 < 0.0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"t2 negative");
   if (t4 < 0.0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"t4 negative");
@@ -3699,33 +3697,29 @@ PetscErrorCode SeismicSTFEvaluate_TriRegYoffe_mode1(SeismicSTF stf,PetscReal tim
   if ( (time >= 0.0) && (time < ctx->tau_S) ) {
     ierr = reg_yoffe_compute_C1(ctx,time,&C1);CHKERRQ(ierr);
     C2 = (3.0/8.0) * PETSC_PI * tau_R2;
-    //printf("time %+1.2e [a] C1,C2 %+1.4e %+1.4e\n",time,C1,C2);
+
     phi = C1 + C2;
   } else if ( (time >= ctx->tau_S) && (time < 2.0 * ctx->tau_S) ) {
     ierr = reg_yoffe_compute_C1(ctx,time,&C1);CHKERRQ(ierr);
     C2 = (3.0/8.0) * PETSC_PI * tau_R2;
     ierr = reg_yoffe_compute_C3(ctx,time,&C3);CHKERRQ(ierr);
-    //printf("time %+1.2e [b] C1,C2,C3 %+1.4e %+1.4e %+1.4e\n",time,C1,C2,C3);
 
     phi = C1 - C2 + C3;
   } else if ( (time >= 2.0* ctx->tau_S) && (time < ctx->tau_R) ) {
     ierr = reg_yoffe_compute_C1(ctx,time,&C1);CHKERRQ(ierr);
     ierr = reg_yoffe_compute_C3(ctx,time,&C3);CHKERRQ(ierr);
     ierr = reg_yoffe_compute_C4(ctx,time,&C4);CHKERRQ(ierr);
-    //printf("time %+1.2e [c] C1,C3,C4 %+1.4e %+1.4e %+1.4e\n",time,C1,C3,C4);
   
     phi = C1 + C3 + C4;
   } else if ( (time >= ctx->tau_R) && (time < (ctx->tau_R + ctx->tau_S)) ) {
     ierr = reg_yoffe_compute_C3(ctx,time,&C3);CHKERRQ(ierr);
     ierr = reg_yoffe_compute_C4(ctx,time,&C4);CHKERRQ(ierr);
     C5 = 0.5 * PETSC_PI * ctx->tau_R * (time - ctx->tau_R);
-    //printf("time %+1.2e [d] C3,C4,C5 %+1.4e %+1.4e %+1.4e\n",time,C3,C4,C5);
     
     phi = C5 + C3 + C4;
   } else if ( (time >= (ctx->tau_R + ctx->tau_S)) && (time < (ctx->tau_R + 2.0 * ctx->tau_S)) ) {
     ierr = reg_yoffe_compute_C4(ctx,time,&C4);CHKERRQ(ierr);
     C6 = 0.5 * PETSC_PI * ctx->tau_R * (2.0 * ctx->tau_S - time + ctx->tau_R);
-    //printf("time %+1.2e [e] C4,C6 %+1.4e %+1.4e\n",time,C4,C6);
 
     phi = C4 + C6;
   } else { /* time < 0.0 */
@@ -3815,10 +3809,8 @@ PetscErrorCode SeismicSTFCreate_TriRegYoffe(PetscReal tau_S,PetscReal tau_R,Pets
   stf->data = (void*)yoffe;
 
   if (tau_R > 2.0 * tau_S) {
-    printf("mode 1\n");
     stf->evaluate = SeismicSTFEvaluate_TriRegYoffe_mode1;
   } else if ((tau_S < tau_R) && (tau_R < 2.0 * tau_S)) {
-    printf("mode 2\n");
     stf->evaluate = SeismicSTFEvaluate_TriRegYoffe_mode2;
   } else SETERRQ2(PETSC_COMM_WORLD,PETSC_ERR_USER,"Invalid values for tau_S (%+1.4e) and tau_R(%+1.4e) provided",tau_S,tau_R);
     
