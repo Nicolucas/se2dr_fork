@@ -4913,7 +4913,7 @@ int main(int argc,char **args)
     }
   }
   
-  //ierr = se2wave_demo(mx,my);CHKERRQ(ierr);
+  ierr = se2wave_demo(mx,my);CHKERRQ(ierr);
   
   ierr = PetscFinalize();
   return 0;
