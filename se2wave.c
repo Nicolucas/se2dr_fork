@@ -4786,6 +4786,104 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode test_SeismicSTF(void)
+{
+  PetscErrorCode ierr;
+  SeismicSTF     stf;
+  PetscInt       k,nt;
+  PetscReal      time,time_max,dt;
+  FILE           *fp;
+  PetscMPIInt    commsize;
+  char           filename[PETSC_MAX_PATH_LEN];
+  PetscBool      is_ricker = PETSC_FALSE,is_yoffe = PETSC_FALSE;
+  
+  ierr = MPI_Comm_size(PETSC_COMM_WORLD,&commsize);CHKERRQ(ierr);
+  if (commsize != 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Test should be executed on a single MPI rank");
+
+  ierr = PetscOptionsGetBool(NULL,NULL,"-stf_ricker",&is_ricker,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-stf_yoffe",&is_yoffe,NULL);CHKERRQ(ierr);
+  
+  /* Define ricker time functions */
+  if (is_ricker) {
+    PetscReal t0,freq,amp;
+    
+    t0   = 0.15;
+    freq = 12.0;
+    amp  = 1.0;
+    ierr = SeismicSTFCreate_Ricker(0.15,12.0,1.0,&stf);CHKERRQ(ierr);
+    
+    ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"%s","SeismicSTF_Ricker.log");CHKERRQ(ierr);
+    fp = NULL;
+    fp = fopen(filename,"w");
+    if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
+    
+    fprintf(fp,"# SeismicSTF\n");
+    fprintf(fp,"#   Parameters\n");
+    fprintf(fp,"#     type  \"Ricker\"\n");
+    fprintf(fp,"#     t0    %+1.12e (sec)\n",t0);
+    fprintf(fp,"#     freq  %+1.12e (Hz)\n",freq);
+    fprintf(fp,"#     amp   %+1.12e\n",amp);
+  }
+  if (is_yoffe) {
+    PetscReal tau_S,tau_R,D_max;
+    
+    tau_S = 0.15;
+    tau_R = 1.0;
+    D_max = 1.1;
+    ierr = SeismicSTFCreate_TriRegYoffe(tau_S,tau_R,D_max,&stf);CHKERRQ(ierr);
+    
+    ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"%s","SeismicSTF_Yoffe.log");CHKERRQ(ierr);
+    fp = NULL;
+    fp = fopen(filename,"w");
+    if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
+    
+    fprintf(fp,"# SeismicSTF\n");
+    fprintf(fp,"#   Parameters\n");
+    fprintf(fp,"#     type  \"Yoffe\"\n");
+    fprintf(fp,"#     tau_S %+1.12e (sec)\n",tau_S);
+    fprintf(fp,"#     tau_R %+1.12e (Hz)\n",tau_R);
+    fprintf(fp,"#     D_max %+1.12e\n",D_max);
+    
+    //SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Parameters need to be checked for Yoffe STF verification test");
+  }
+
+
+  
+  /* Initialize time loop */
+  k = 0;
+  time = 0.0;
+  
+  time_max = 2.0;
+  ierr = PetscOptionsGetReal(NULL,NULL,"-tmax",&time_max,NULL);CHKERRQ(ierr);
+  PetscPrintf(PETSC_COMM_WORLD,"[se2wave] Requested time period: %1.4e\n",time_max);
+  
+  dt = 1.0e-6;
+  ierr = PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);CHKERRQ(ierr);
+  PetscPrintf(PETSC_COMM_WORLD,"[se2wave] Using time step size: %1.4e\n",dt);
+  
+  /* Perform time stepping */
+  nt = PETSC_MAX_INT;
+  for (k=0; k<=nt; k++) {
+    PetscReal stf_value;
+    
+    /* Evaluate source time function, S(t_{n+1}) */
+    ierr = SeismicSTFEvaluate(stf,time,&stf_value);CHKERRQ(ierr);
+    
+    fprintf(fp,"%+1.6e %+1.12e\n",time,stf_value);
+    
+    time = time + dt;
+    if (time >= time_max) {
+      break;
+    }
+  }
+  PetscPrintf(PETSC_COMM_WORLD,"[step %9D] time = %1.4e : dt = %1.4e \n",k,time,dt);
+  
+  fclose(fp);
+  ierr = SeismicSTFDestroy(&stf);CHKERRQ(ierr);
+  
+  PetscFunctionReturn(0);
+}
+
 int main(int argc,char **args)
 {
   PetscErrorCode ierr;
@@ -4804,8 +4902,18 @@ int main(int argc,char **args)
   //ierr = specfem_ex2(mx,my);CHKERRQ(ierr); // comparison with sem2dpack
   //ierr = specfem_gare6(mx,my);CHKERRQ(ierr); // comparison with gare6more
   //ierr = specfem_gare6_ex2(mx,my);CHKERRQ(ierr); // comparison with gare6more
+  {
+    PetscBool found;
+    
+    ierr = PetscOptionsGetBool(NULL,NULL,"-verify_stf",&found,NULL);CHKERRQ(ierr);
+    if (found) {
+      ierr = test_SeismicSTF();CHKERRQ(ierr);
+      ierr = PetscFinalize();
+      return 0;
+    }
+  }
   
-  ierr = se2wave_demo(mx,my);CHKERRQ(ierr);
+  //ierr = se2wave_demo(mx,my);CHKERRQ(ierr);
   
   ierr = PetscFinalize();
   return 0;
