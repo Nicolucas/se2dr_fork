@@ -4830,6 +4830,7 @@ PetscErrorCode test_SeismicSTF(void)
 
   ierr = PetscOptionsGetBool(NULL,NULL,"-stf_ricker",&is_ricker,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-stf_yoffe",&is_yoffe,NULL);CHKERRQ(ierr);
+  if (!is_ricker && !is_yoffe) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"No STF implementation specified. Use one of { -stf_ricker , -stf_yoffe}");
   
   /* Define ricker time functions */
   if (is_ricker) {
@@ -4848,12 +4849,14 @@ PetscErrorCode test_SeismicSTF(void)
     fp = fopen(filename,"w");
     if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
     
+    fprintf(fp,"# --------------------------------\n");
     fprintf(fp,"# SeismicSTF\n");
     fprintf(fp,"#   Parameters\n");
     fprintf(fp,"#     type  \"Ricker\"\n");
     fprintf(fp,"#     t0    %+1.12e (sec)\n",t0);
     fprintf(fp,"#     freq  %+1.12e (Hz)\n",freq);
     fprintf(fp,"#     amp   %+1.12e\n",amp);
+    fprintf(fp,"# --------------------------------\n");
   }
   if (is_yoffe) {
     PetscReal tau_S,tau_R,D_max;
@@ -4871,12 +4874,14 @@ PetscErrorCode test_SeismicSTF(void)
     fp = fopen(filename,"w");
     if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
     
+    fprintf(fp,"# --------------------------------\n");
     fprintf(fp,"# SeismicSTF\n");
     fprintf(fp,"#   Parameters\n");
     fprintf(fp,"#     type  \"Yoffe\"\n");
-    fprintf(fp,"#     tau_S %+1.12e (sec)\n",tau_S);
-    fprintf(fp,"#     tau_R %+1.12e (Hz)\n",tau_R);
+    fprintf(fp,"#     tau_S %+1.12e\n",tau_S);
+    fprintf(fp,"#     tau_R %+1.12e\n",tau_R);
     fprintf(fp,"#     D_max %+1.12e\n",D_max);
+    fprintf(fp,"# --------------------------------\n");
     
     //SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Parameters need to be checked for Yoffe STF verification test");
   }
