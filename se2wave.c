@@ -4897,11 +4897,8 @@ int main(int argc,char **args)
   ierr = PetscOptionsGetInt(NULL,NULL,"-mx",&mx,NULL);CHKERRQ(ierr);
   my = mx;
   ierr = PetscOptionsGetInt(NULL,NULL,"-my",&my,NULL);CHKERRQ(ierr);
-  
-  //ierr = specfem(mx,my);CHKERRQ(ierr);
-  //ierr = specfem_ex2(mx,my);CHKERRQ(ierr); // comparison with sem2dpack
-  //ierr = specfem_gare6(mx,my);CHKERRQ(ierr); // comparison with gare6more
-  //ierr = specfem_gare6_ex2(mx,my);CHKERRQ(ierr); // comparison with gare6more
+
+  /* STF test */
   {
     PetscBool found;
     
@@ -4912,6 +4909,11 @@ int main(int argc,char **args)
       return 0;
     }
   }
+
+  //ierr = specfem(mx,my);CHKERRQ(ierr);
+  //ierr = specfem_ex2(mx,my);CHKERRQ(ierr); // comparison with sem2dpack
+  //ierr = specfem_gare6(mx,my);CHKERRQ(ierr); // comparison with gare6more
+  //ierr = specfem_gare6_ex2(mx,my);CHKERRQ(ierr); // comparison with gare6more
   
   ierr = se2wave_demo(mx,my);CHKERRQ(ierr);
   
