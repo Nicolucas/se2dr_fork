@@ -3660,7 +3660,7 @@ static PetscErrorCode reg_yoffe_compute_C4(SeismicSTF_TriRegYoffe *ctx,PetscReal
   tau_R2 = ctx->tau_R*ctx->tau_R;
   t1 = -ctx->tau_S + 0.5 * time + 0.25 * ctx->tau_R;
   t2 = (time - 2.0 * ctx->tau_S) * (ctx->tau_R - time + 2.0 * ctx->tau_S);
-  t3 = ctx->tau_R * (ctx->tau_R + time - 2.0 * ctx->tau_S);
+  t3 = ctx->tau_R * (-ctx->tau_R + time - 2.0 * ctx->tau_S);
   t4 = (time - 2.0 * ctx->tau_S) / ctx->tau_R;
 
   if (PetscAbsReal(time - 2.0 * ctx->tau_S) < 0.0) {
@@ -3673,7 +3673,7 @@ static PetscErrorCode reg_yoffe_compute_C4(SeismicSTF_TriRegYoffe *ctx,PetscReal
   if (t4 < 0.0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"t4 negative");
   if (t5 < 0.0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"t5 negative");
 
-  *C4 =  t1 * PetscSqrtReal(t2) + t3 * PetscAsinReal(PetscSqrtReal(t4)) - 1.5 * tau_R2 * PetscAtanReal(PetscSqrtReal(t5));
+  *C4 =  t1 * PetscSqrtReal(t2) + t3 * PetscAsinReal(PetscSqrtReal(t4)) - 0.75 * tau_R2 * PetscAtanReal(PetscSqrtReal(t5));
   PetscFunctionReturn(0);
 }
 
