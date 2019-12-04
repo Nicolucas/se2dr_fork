@@ -23,11 +23,12 @@ all:
 	-@echo "---- Compiling $*.c -----"
 	${PCC} ${CFLAGS} -c $*.c ${INC}
 
-clean_all:
+clean::
 	-@rm -rf *.o
 	-@rm -rf *.app
 	-@rm -rf *.dSYM
 
 clean_output:
 	-@rm -rf *.vtu *.vts *.dat
+	-@rm -rf *.log
 
