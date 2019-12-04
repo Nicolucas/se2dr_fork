@@ -3833,7 +3833,7 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
   ierr = SpecFECtxCreate(&ctx);CHKERRQ(ierr);
   if (ctx->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   p = 2;
-  ierr = PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetInt(NULL,NULL,"-bdegree",&p,NULL);CHKERRQ(ierr);
   ierr = SpecFECtxCreateMesh(ctx,2,mx,my,PETSC_DECIDE,p,2);CHKERRQ(ierr);
   
   {
@@ -4010,7 +4010,7 @@ PetscErrorCode specfem_ex2(PetscInt mx,PetscInt my)
   ierr = SpecFECtxCreate(&ctx);CHKERRQ(ierr);
   if (ctx->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   p = 2;
-  ierr = PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetInt(NULL,NULL,"-bdegree",&p,NULL);CHKERRQ(ierr);
   ierr = SpecFECtxCreateMesh(ctx,2,mx,my,PETSC_DECIDE,p,2);CHKERRQ(ierr);
   
   {
@@ -4173,7 +4173,7 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
   ierr = SpecFECtxCreate(&ctx);CHKERRQ(ierr);
   if (ctx->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   p = 2;
-  ierr = PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetInt(NULL,NULL,"-bdegree",&p,NULL);CHKERRQ(ierr);
   ierr = SpecFECtxCreateMesh(ctx,2,mx,my,PETSC_DECIDE,p,2);CHKERRQ(ierr);
   
   {
@@ -4361,7 +4361,7 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
   ierr = SpecFECtxCreate(&ctx);CHKERRQ(ierr);
   if (ctx->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   p = 2;
-  ierr = PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetInt(NULL,NULL,"-bdegree",&p,NULL);CHKERRQ(ierr);
   ierr = SpecFECtxCreateMesh(ctx,2,mx,my,PETSC_DECIDE,p,2);CHKERRQ(ierr);
   
   {
@@ -4574,7 +4574,7 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   */
   ierr = SpecFECtxCreate(&ctx);CHKERRQ(ierr);
   p = 2;
-  ierr = PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetInt(NULL,NULL,"-bdegree",&p,NULL);CHKERRQ(ierr);
   ierr = SpecFECtxCreateMesh(ctx,2,mx,my,PETSC_DECIDE,p,2);CHKERRQ(ierr);
 
   /*
