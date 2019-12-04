@@ -915,7 +915,7 @@ PetscErrorCode SpecFECtxGetCornerBasis_MPI(SpecFECtx c,PetscInt *si,PetscInt *si
 PetscErrorCode SpecFECtxGetLocalBoundingBox(SpecFECtx c,PetscReal gmin[],PetscReal gmax[])
 {
   PetscErrorCode ierr;
-  PetscInt si[2],si_g[2],m,n,ii,jj;
+  PetscInt si[]={0,0},si_g[]={0,0},m,n,ii,jj;
   const PetscReal *LA_coor;
   Vec coor;
   
@@ -1546,13 +1546,13 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
     if (jj > c->my_g) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: y > gmax[1]");
     
     eowner_source[k] = ii + jj * c->mx;
-    printf("source[%d] (%+1.4e,%+1.4e) --> element %d \n",k,xs[2*k],xs[2*k+1],eowner_source[k]);
+    PetscPrintf(PETSC_COMM_SELF,"source[%d] (%+1.4e,%+1.4e) --> element %d \n",k,xs[2*k],xs[2*k+1],eowner_source[k]);
   }
   
   /* locate closest quadrature point */
   for (k=0; k<nsources; k++) {
     PetscReal sep2,sep2_min = PETSC_MAX_REAL;
-    PetscInt  min_qp,_ni,_nj;
+    PetscInt  min_qp=-1,_ni=-1,_nj=-1;
     
     e = eowner_source[k];
     
@@ -1582,10 +1582,10 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
         }
       }
     }
+    if (min_qp < 0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_SUP,"Failed to identify a closest quadrature point");
     closest_qp[k] = min_qp;
-    //closest_qp[k] = 3+3*7;
-    printf("source[%d] --> qp %d xi: (%+1.4e,%+1.4e) [%d,%d] \n",k,closest_qp[k],c->xi1d[_ni],c->xi1d[_nj],_ni,_nj);
-    printf("source[%d] --> qp %d x:  (%+1.4e,%+1.4e)\n",k,closest_qp[k],elcoords[2*min_qp],elcoords[2*min_qp+1]);
+    PetscPrintf(PETSC_COMM_SELF,"source[%d] --> qp %d xi: (%+1.4e,%+1.4e) [%d,%d] \n",k,closest_qp[k],c->xi1d[_ni],c->xi1d[_nj],_ni,_nj);
+    PetscPrintf(PETSC_COMM_SELF,"source[%d] --> qp %d x:  (%+1.4e,%+1.4e)\n",k,closest_qp[k],elcoords[2*min_qp],elcoords[2*min_qp+1]);
   }
   
   for (k=0; k<nsources; k++) {
@@ -1668,11 +1668,11 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
           
           if (nrmF < 1.0e-16) continue;
           
-          printf("point[%d][%d]\n",ni,nj);
+          PetscPrintf(PETSC_COMM_SELF,"point[%d][%d]\n",ni,nj);
           
-          printf("  c0 %1.4e %1.4e\n", centroid[0],centroid[1]);
-          printf("  Svec = %1.4e %1.4e\n",Svec[0],Svec[1]);
-          printf("  nrmS = %1.4e\n",nrmS);
+          PetscPrintf(PETSC_COMM_SELF,"  c0 %1.4e %1.4e\n", centroid[0],centroid[1]);
+          PetscPrintf(PETSC_COMM_SELF,"  Svec = %1.4e %1.4e\n",Svec[0],Svec[1]);
+          PetscPrintf(PETSC_COMM_SELF,"  nrmS = %1.4e\n",nrmS);
           
           costheta = (Svec[0]*Fvec[0] + Svec[1]*Fvec[1])/(nrmS * nrmF); //printf("cos(theta) = %1.4e\n",costheta);
           
@@ -1686,18 +1686,18 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
           Fvec_normal[0] = Fvec[0] - Fvec_tangent[0];
           Fvec_normal[1] = Fvec[1] - Fvec_tangent[1];
           
-          printf("  F = %1.4e %1.4e\n",Fvec[0],Fvec[1]);
-          printf("  F_tang = %1.4e %1.4e\n",Fvec_tangent[0],Fvec_tangent[1]);
-          printf("  F_norm = %1.4e %1.4e\n",Fvec_normal[0],Fvec_normal[1]);
+          PetscPrintf(PETSC_COMM_SELF,"  F = %1.4e %1.4e\n",Fvec[0],Fvec[1]);
+          PetscPrintf(PETSC_COMM_SELF,"  F_tang = %1.4e %1.4e\n",Fvec_tangent[0],Fvec_tangent[1]);
+          PetscPrintf(PETSC_COMM_SELF,"  F_norm = %1.4e %1.4e\n",Fvec_normal[0],Fvec_normal[1]);
           
           //torque = Fvec[0]*normal[0] + Fvec[1]*normal[1]; printf("point[%d][%d] torque = %1.4e\n",ni,nj,torque);
-          torque = Svec[0] * Fvec_normal[1] - Svec[1] * Fvec_normal[0]; printf("  torque = %1.4e\n",torque);
+          torque = Svec[0] * Fvec_normal[1] - Svec[1] * Fvec_normal[0]; PetscPrintf(PETSC_COMM_SELF,"  torque = %1.4e\n",torque);
           
           
           net_torque += torque;
         }
       }
-      printf("Net torque over element = %1.4e\n",net_torque);
+      PetscPrintf(PETSC_COMM_SELF,"Net torque over element = %1.4e\n",net_torque);
     }
 #endif
     
@@ -1762,7 +1762,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d(SpecFECtx c,PetscI
     if (jj > c->my_g) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: y > gmax[1]");
     
     eowner_source[k] = ii + jj * c->mx;
-    printf("source[%d] (%+1.4e,%+1.4e) --> element %d \n",k,xs[2*k],xs[2*k+1],eowner_source[k]);
+    PetscPrintf(PETSC_COMM_SELF,"source[%d] (%+1.4e,%+1.4e) --> element %d \n",k,xs[2*k],xs[2*k+1],eowner_source[k]);
   }
   
   
@@ -1809,7 +1809,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d(SpecFECtx c,PetscI
     if (PetscAbsReal(xi_source[1]) < 1.0e-12) xi_source[1] = 0.0;
     
     ierr = TabulateBasisDerivativesAtPointTensorProduct2d(xi_source,c->basisorder,&dN_dxi,&dN_deta);CHKERRQ(ierr);
-    printf("source[%d] --> xi (%+1.4e,%+1.4e)\n",k,xi_source[0],xi_source[1]);
+    PetscPrintf(PETSC_COMM_SELF,"source[%d] --> xi (%+1.4e,%+1.4e)\n",k,xi_source[0],xi_source[1]);
     
     
     
@@ -1870,11 +1870,11 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d(SpecFECtx c,PetscI
           
           if (nrmF < 1.0e-16) continue;
           
-          printf("point[%d][%d]\n",ni,nj);
+          PetscPrintf(PETSC_COMM_SELF,"point[%d][%d]\n",ni,nj);
           
-          printf("  c0 %1.4e %1.4e\n", centroid[0],centroid[1]);
-          printf("  Svec = %1.4e %1.4e\n",Svec[0],Svec[1]);
-          printf("  nrmS = %1.4e\n",nrmS);
+          PetscPrintf(PETSC_COMM_SELF,"  c0 %1.4e %1.4e\n", centroid[0],centroid[1]);
+          PetscPrintf(PETSC_COMM_SELF,"  Svec = %1.4e %1.4e\n",Svec[0],Svec[1]);
+          PetscPrintf(PETSC_COMM_SELF,"  nrmS = %1.4e\n",nrmS);
           
           costheta = (Svec[0]*Fvec[0] + Svec[1]*Fvec[1])/(nrmS * nrmF); //printf("cos(theta) = %1.4e\n",costheta);
           
@@ -1888,18 +1888,18 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d(SpecFECtx c,PetscI
           Fvec_normal[0] = Fvec[0] - Fvec_tangent[0];
           Fvec_normal[1] = Fvec[1] - Fvec_tangent[1];
           
-          printf("  F = %1.4e %1.4e\n",Fvec[0],Fvec[1]);
-          printf("  F_tang = %1.4e %1.4e\n",Fvec_tangent[0],Fvec_tangent[1]);
-          printf("  F_norm = %1.4e %1.4e\n",Fvec_normal[0],Fvec_normal[1]);
+          PetscPrintf(PETSC_COMM_SELF,"  F = %1.4e %1.4e\n",Fvec[0],Fvec[1]);
+          PetscPrintf(PETSC_COMM_SELF,"  F_tang = %1.4e %1.4e\n",Fvec_tangent[0],Fvec_tangent[1]);
+          PetscPrintf(PETSC_COMM_SELF,"  F_norm = %1.4e %1.4e\n",Fvec_normal[0],Fvec_normal[1]);
           
           //torque = Fvec[0]*normal[0] + Fvec[1]*normal[1]; printf("point[%d][%d] torque = %1.4e\n",ni,nj,torque);
-          torque = Svec[0] * Fvec_normal[1] - Svec[1] * Fvec_normal[0]; printf("  torque = %1.4e\n",torque);
+          torque = Svec[0] * Fvec_normal[1] - Svec[1] * Fvec_normal[0]; PetscPrintf(PETSC_COMM_SELF,"  torque = %1.4e\n",torque);
           
           
           net_torque += torque;
         }
       }
-      printf("Net torque over element = %1.4e\n",net_torque);
+      PetscPrintf(PETSC_COMM_SELF,"Net torque over element = %1.4e\n",net_torque);
     }
 #endif
     
@@ -1970,11 +1970,11 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_Kernel_CSpline(Spe
     kernel_h = pfac * (0.5*ds);
     
     
-    printf("kernel_h = %1.4e <with pfac>\n",kernel_h);
+    PetscPrintf(PETSC_COMM_WORLD,"kernel_h = %1.4e <with pfac>\n",kernel_h);
   }
   ierr = PetscOptionsGetReal(NULL,NULL,"-sm_h",&kernel_h,&flg);CHKERRQ(ierr);
   if (flg) {
-    printf("kernel_h = %1.4e <from options>\n",kernel_h);
+    PetscPrintf(PETSC_COMM_WORLD,"kernel_h = %1.4e <from options>\n",kernel_h);
   }
   
   for (k=0; k<nsources; k++) {
@@ -2050,8 +2050,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_Kernel_CSpline(Spe
   ierr = VecRestoreArrayRead(coor,&LA_coor);CHKERRQ(ierr);
   
   //ierr = VecScale(F,1.0/int_w);CHKERRQ(ierr);
-  
-  printf("\\int W = %1.14e \n",int_w);
+  ierr = MPI_Allreduce(MPI_IN_PLACE,&int_w,1,MPIU_REAL,MPIU_SUM,PETSC_COMM_WORLD);CHKERRQ(ierr);
+  PetscPrintf(PETSC_COMM_WORLD,"\\int W = %1.14e \n",int_w);
   
   PetscFunctionReturn(0);
 }
@@ -2105,7 +2105,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_P0(SpecFECtx c,Pet
     if (jj > c->my) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: y > gmax[1]");
     
     eowner_source[k] = ii + jj * c->mx;
-    printf("source[%d] (%+1.4e,%+1.4e) --> element %d \n",k,xs[2*k],xs[2*k+1],eowner_source[k]);
+    PetscPrintf(PETSC_COMM_SELF,"source[%d] (%+1.4e,%+1.4e) --> element %d \n",k,xs[2*k],xs[2*k+1],eowner_source[k]);
   }
   
   for (k=0; k<nsources; k++) {
@@ -2148,7 +2148,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_P0(SpecFECtx c,Pet
     xi_source[1] = 0.0;
     
     ierr = TabulateBasisDerivativesAtPointTensorProduct2d(xi_source,c->basisorder,&dN_dxi,&dN_deta);CHKERRQ(ierr);
-    printf("source[%d] --> xi (%+1.4e,%+1.4e)\n",k,xi_source[0],xi_source[1]);
+    PetscPrintf(PETSC_COMM_SELF,"source[%d] --> xi (%+1.4e,%+1.4e)\n",k,xi_source[0],xi_source[1]);
     
     moment_k = &moment[4*k];
     dN_dxi_q   = dN_dxi[0];
@@ -2341,7 +2341,7 @@ PetscErrorCode ElastoDynamicsComputeTimeStep_2d(SpecFECtx ctx,PetscReal *_dt)
     
     dt_min = PetscMin(dt_min,value);
   }
-  ierr = MPI_Allreduce(&dt_min,&dt_min_g,1,MPIU_SCALAR,MPI_MIN,PETSC_COMM_WORLD);CHKERRQ(ierr);
+  ierr = MPI_Allreduce(&dt_min,&dt_min_g,1,MPIU_REAL,MPIU_MIN,PETSC_COMM_WORLD);CHKERRQ(ierr);
   
   *_dt = dt_min_g;
   
@@ -2545,7 +2545,7 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
     }
     
     
-    printf("# receiver location: x,y %+1.8e %+1.8e -- interpolated coordinate --> %+1.8e %+1.8e\n",xr[0],xr[1],xri[0],xri[1]);
+    PetscPrintf(PETSC_COMM_SELF,"# receiver location: x,y %+1.8e %+1.8e -- interpolated coordinate --> %+1.8e %+1.8e\n",xr[0],xr[1],xri[0],xri[1]);
     
     ierr = VecRestoreArrayRead(coor,&LA_c);CHKERRQ(ierr);
     ierr = PetscFree(N_s1[0]);CHKERRQ(ierr);
@@ -3116,7 +3116,7 @@ PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSou
   src->closest_gll = -1;
   if (itype == SOURCE_IMPL_NEAREST_QPOINT) {
     PetscReal sep2,sep2_min = PETSC_MAX_REAL;
-    PetscInt  e,i,min_qp = -1,ni,nj,_ni,_nj,closest_qp,nid;
+    PetscInt  e,i,min_qp=-1,ni,nj,_ni=-1,_nj=-1,closest_qp,nid;
     PetscReal *elcoords;
     const PetscInt *element,*elnidx;
     PetscInt nbasis;
@@ -3178,6 +3178,7 @@ PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSou
       }
     }
     ierr = VecRestoreArrayRead(coordinates,&LA_coor);CHKERRQ(ierr);
+    if (min_qp < 0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_SUP,"Failed to identify a closest quadrature point");
     closest_qp = min_qp;
     src->closest_gll = closest_qp;
     PetscPrintf(PETSC_COMM_SELF,"[SeismicSource] source --> closest_gll %d xi: (%+1.4e,%+1.4e) [%d,%d] \n",closest_qp,c->xi1d[_ni],c->xi1d[_nj],_ni,_nj);
@@ -4254,18 +4255,9 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
     
     /* Evaluate source time function, S(t_{n+1}) */
     stf = 1.0;
-    {
-      PetscReal arg;
-      
-      // moment-time history
-      //ierr = EvaluateRickerWavelet(time,0.08,14.5,1.0,&stf);CHKERRQ(ierr);
-      ierr = EvaluateRickerWavelet(time,0.15,8.0,1.0,&stf);CHKERRQ(ierr);
-      
-      // moment-time history
-      //arg = time / stf_exp_T;
-      //stf = 1.0 - (1.0 + arg) * PetscExpReal(-arg);
-    }
-    //stf = time;
+    // moment-time history
+    //ierr = EvaluateRickerWavelet(time,0.08,14.5,1.0,&stf);CHKERRQ(ierr);
+    ierr = EvaluateRickerWavelet(time,0.15,8.0,1.0,&stf);CHKERRQ(ierr);
     
     /* Compute f = -F^{int}( u_{n+1} ) */
     ierr = AssembleLinearForm_ElastoDynamics2d(ctx,u,f);CHKERRQ(ierr);
@@ -4283,7 +4275,7 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
       PetscReal nrm,max,min;
       
       PetscPrintf(PETSC_COMM_WORLD,"[step %9D] time = %1.4e : dt = %1.4e \n",k,time,dt);
-      printf("  STF(%1.4e) = %+1.4e\n",time,stf);
+      PetscPrintf(PETSC_COMM_WORLD,"  STF(%1.4e) = %+1.4e\n",time,stf);
       VecNorm(u,NORM_2,&nrm);
       VecMin(u,0,&min);
       VecMax(u,0,&max); PetscPrintf(PETSC_COMM_WORLD,"  [displacement] max = %+1.4e : min = %+1.4e : l2 = %+1.4e \n",max,min,nrm);
@@ -4316,7 +4308,7 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
     PetscReal nrm,max,min;
     
     PetscPrintf(PETSC_COMM_WORLD,"[step %9D] time = %1.4e : dt = %1.4e \n",k,time,dt);
-    printf("  STF(%1.4e) = %+1.4e\n",time,stf);
+    PetscPrintf(PETSC_COMM_WORLD,"  STF(%1.4e) = %+1.4e\n",time,stf);
     VecNorm(u,NORM_2,&nrm);
     VecMin(u,0,&min);
     VecMax(u,0,&max); PetscPrintf(PETSC_COMM_WORLD,"  [displacement] max = %+1.4e : min = %+1.4e : l2 = %+1.4e \n",max,min,nrm);
@@ -4820,7 +4812,7 @@ PetscErrorCode test_SeismicSTF(void)
   SeismicSTF     stf;
   PetscInt       k,nt;
   PetscReal      time,time_max,dt;
-  FILE           *fp;
+  FILE           *fp = NULL;
   PetscMPIInt    commsize;
   char           filename[PETSC_MAX_PATH_LEN];
   PetscBool      is_ricker = PETSC_FALSE,is_yoffe = PETSC_FALSE;
@@ -4845,7 +4837,6 @@ PetscErrorCode test_SeismicSTF(void)
     ierr = SeismicSTFCreate_Ricker(0.15,12.0,1.0,&stf);CHKERRQ(ierr);
     
     ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"%s","SeismicSTF_Ricker.log");CHKERRQ(ierr);
-    fp = NULL;
     fp = fopen(filename,"w");
     if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
     
@@ -4870,7 +4861,6 @@ PetscErrorCode test_SeismicSTF(void)
     ierr = SeismicSTFCreate_TriRegYoffe(tau_S,tau_R,D_max,&stf);CHKERRQ(ierr);
     
     ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"%s","SeismicSTF_Yoffe.log");CHKERRQ(ierr);
-    fp = NULL;
     fp = fopen(filename,"w");
     if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
     
@@ -4939,13 +4929,13 @@ int main(int argc,char **args)
 
   /* STF test */
   {
-    PetscBool found;
+    PetscBool found = PETSC_FALSE;
     
     ierr = PetscOptionsGetBool(NULL,NULL,"-verify_stf",&found,NULL);CHKERRQ(ierr);
     if (found) {
       ierr = test_SeismicSTF();CHKERRQ(ierr);
       ierr = PetscFinalize();
-      return 0;
+      return(ierr);
     }
   }
 
@@ -4957,5 +4947,5 @@ int main(int argc,char **args)
   ierr = se2wave_demo(mx,my);CHKERRQ(ierr);
   
   ierr = PetscFinalize();
-  return 0;
+  return(ierr);
 }
