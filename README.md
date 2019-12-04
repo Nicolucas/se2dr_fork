@@ -19,7 +19,7 @@
 ### 1. Installation ###
 * Requires a C compiler
 * Requires PETSc (`https://www.mcs.anl.gov/petsc`). PETSc can be downloaded from here `https://www.mcs.anl.gov/petsc/download`.
-* `se2wave` be compiled with PETSc version 3.9. 
+* `se2wave` be compiled with PETSc version 3.12. 
 * Once PETSc has been built, the executable `se2wave.app` can be compiled with the command
 ``` 
 make all PETSC_DIR=/path/to/petsc PETSC_ARCH=name-of-petsc-arch
