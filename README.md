@@ -45,7 +45,7 @@ Example command line option:
 
 Plot the result in gnuplot
 ```
-gnuplot> plot "closestqpsource-receiverCP-uva-64x64-p6-rank0.dat" u 1:4 w l
+gnuplot> plot "closestqpsource-receiverCP-uva-64x64-p6-rank0.dat" u 1:5 w l
 ```
 The `vy` component of velocity should like this:
 
