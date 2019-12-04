@@ -43,6 +43,14 @@ The above options are all optional.
 Example command line option:
 ```./se2wave.app -mx 64 -my 64 -bdegree 6 -tmax 0.4 -nt 100000 -of 100```
 
+Plot the result in gnuplot
+```
+gnuplot> plot "closestqpsource-receiverCP-uva-64x64-p6-rank0.dat" u 1:4 w l
+```
+The `vy` component of velocity should like this:
+
+![se2wave-demo-vy](docs/figs/se2wave-demo-vy.png)
+
 ### 3. Bug reporting / feature requests ###
 
 * Email: dave.mayhem23@gmail.com
