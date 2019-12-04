@@ -41,7 +41,7 @@ Options are provided as command line arguments
 The above options are all optional.
 
 Example command line option:
-```./se2wave.app -mx 64 -my 64 -border 6 -tmax 0.4 -nt 100000 -of 100```
+```./se2wave.app -mx 64 -my 64 -bdegree 6 -tmax 0.4 -nt 100000 -of 100```
 
 ### 3. Bug reporting / feature requests ###
 
