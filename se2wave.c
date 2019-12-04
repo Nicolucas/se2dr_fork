@@ -33,13 +33,15 @@ typedef struct {
 } QPntIsotropicElastic;
 
 struct _p_SpecFECtx {
+  PetscMPIInt rank,size;
   PetscInt basisorder;
-  PetscInt mx,my,mz,nx,ny,nz;
+  PetscInt mx,my,mz;
+  PetscInt mx_g,my_g,mz_g,nx_g,ny_g,nz_g;
   //PetscReal dx,dy,dz;
   PetscInt dim;
   PetscInt dofs;
   DM dm;
-  PetscInt npe,npe_1d,ne;
+  PetscInt npe,npe_1d,ne,ne_g;
   PetscInt *element;
   PetscReal *xi1d,*w1d,*w;
   PetscReal *elbuf_coor,*elbuf_field,*elbuf_field2;
@@ -117,7 +119,7 @@ PetscErrorCode CreateGLLCoordsWeights(PetscInt N,PetscInt *_npoints,PetscReal **
   
   // Use the Chebyshev-Gauss-Lobatto nodes as the first guess
   for (i=0; i<N1; i++) {
-    x[i]=cos(M_PI*i/(PetscReal)N);
+    x[i]=PetscCosReal(PETSC_PI*i/(PetscReal)N);
   }
   
   // The Legendre Vandermonde Matrix
@@ -156,7 +158,7 @@ PetscErrorCode CreateGLLCoordsWeights(PetscInt N,PetscInt *_npoints,PetscReal **
     //end
     for (i=0; i<N1; i++) {
       for (k=1; k<N; k++) {
-        P[i+(k+1)*N1] = ( (2.0*(k+1)-1.0)*x[i] * P[i+k*N1] - (k+1.0-1.0) * P[i+(k-1)*N1] ) / (double)(k+1.0);
+        P[i+(k+1)*N1] = ( (2.0*(k+1)-1.0)*x[i] * P[i+k*N1] - (k+1.0-1.0) * P[i+(k-1)*N1] ) / (PetscReal)(k+1.0);
       }
     }
     
@@ -232,7 +234,7 @@ PetscErrorCode MatComputeConditionNumber(Mat A,PetscReal *cond)
   
   ierr = KSPComputeEigenvaluesExplicitly(kspV,rank,realpt,complexpt);CHKERRQ(ierr);
   for (i=0; i<rank; i++) {
-    nrmeigs[i] = sqrt( realpt[i]*realpt[i] + complexpt[i]*complexpt[i]);
+    nrmeigs[i] = PetscSqrtReal( realpt[i]*realpt[i] + complexpt[i]*complexpt[i]);
   }
   ierr = PetscSortReal(rank,nrmeigs);CHKERRQ(ierr);
   
@@ -283,7 +285,7 @@ PetscErrorCode TabulateBasis1d_CLEGENDRE(PetscInt npoints,PetscReal xi[],PetscIn
     
     cnt = 0;
     for (i=0; i<nbasis; i++) {
-      Aij = pow(xil,i);
+      Aij = PetscPowReal(xil,(PetscReal)i);
       ierr = MatSetValue(A,k,cnt,Aij,INSERT_VALUES);CHKERRQ(ierr);
       cnt++;
     }
@@ -337,7 +339,7 @@ PetscErrorCode TabulateBasis1d_CLEGENDRE(PetscInt npoints,PetscReal xi[],PetscIn
     /* generate all monomials for point, p */
     cnt = 0;
     for (i=0; i<nbasis; i++) {
-      monomials[cnt] = pow((double)xi[p],(double)i);
+      monomials[cnt] = PetscPowReal((PetscReal)xi[p],(PetscReal)i);
       cnt++;
     }
     
@@ -417,7 +419,7 @@ PetscErrorCode TabulateBasisDerivatives1d_CLEGENDRE(PetscInt npoints,PetscReal x
     
     cnt = 0;
     for (i=0; i<nbasis; i++) {
-      Aij = pow(xil,i);
+      Aij = PetscPowReal(xil,(PetscReal)i);
       ierr = MatSetValue(A,k,cnt,Aij,INSERT_VALUES);CHKERRQ(ierr);
       cnt++;
     }
@@ -476,7 +478,7 @@ PetscErrorCode TabulateBasisDerivatives1d_CLEGENDRE(PetscInt npoints,PetscReal x
       if (i == 0) {
         dm_dx = 0.0;
         } else {
-          dm_dx = ((double)i)*pow((double)xi[p],(double)(i-1));
+          dm_dx = ((PetscReal)i)*PetscPowReal((PetscReal)xi[p],(PetscReal)(i-1));
         }
       
       monomials[cnt] = dm_dx;
@@ -694,12 +696,14 @@ PetscErrorCode SpecFECtxCreate(SpecFECtx *c)
   
   ierr = PetscMalloc(sizeof(struct _p_SpecFECtx),&ctx);CHKERRQ(ierr);
   ierr = PetscMemzero(ctx,sizeof(struct _p_SpecFECtx));CHKERRQ(ierr);
+  ierr = MPI_Comm_rank(PETSC_COMM_WORLD,&ctx->rank);CHKERRQ(ierr);
+  ierr = MPI_Comm_size(PETSC_COMM_WORLD,&ctx->size);CHKERRQ(ierr);
   ctx->source_implementation = -1;
   *c = ctx;
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode SpecFECtxCreateENMap2d(SpecFECtx c)
+PetscErrorCode SpecFECtxCreateENMap2d_SEQ(SpecFECtx c)
 {
   PetscErrorCode ierr;
   PetscInt ni0,nj0,i,j,ei,ej,ecnt,*emap,nid;
@@ -719,7 +723,7 @@ PetscErrorCode SpecFECtxCreateENMap2d(SpecFECtx c)
       for (j=0; j<c->npe_1d; j++) {
         for (i=0; i<c->npe_1d; i++) {
           
-          nid = (ni0 + i) + (nj0 + j) * c->nx;
+          nid = (ni0 + i) + (nj0 + j) * c->nx_g;
           emap[i+j*c->npe_1d] = nid;
         }
       }
@@ -732,7 +736,7 @@ PetscErrorCode SpecFECtxCreateENMap2d(SpecFECtx c)
 }
 
 /* Creates domain over [0,1]^d - scale later */
-PetscErrorCode SpecFECtxCreateMeshCoords2d(SpecFECtx c)
+PetscErrorCode SpecFECtxCreateMeshCoords2d_SEQ(SpecFECtx c)
 {
   PetscErrorCode ierr;
   Vec coor;
@@ -745,8 +749,8 @@ PetscErrorCode SpecFECtxCreateMeshCoords2d(SpecFECtx c)
   ierr = DMGetCoordinates(c->dm,&coor);CHKERRQ(ierr);
   ierr = DMGetCoordinateDM(c->dm,&cdm);CHKERRQ(ierr);
   
-  dx = 1.0/((PetscReal)c->mx);
-  dy = 1.0/((PetscReal)c->my);
+  dx = 1.0/((PetscReal)c->mx_g);
+  dy = 1.0/((PetscReal)c->my_g);
   ierr = DMDAVecGetArray(cdm,coor,&LA_coor2d);CHKERRQ(ierr);
   for (ej=0; ej<c->my; ej++) {
     
@@ -777,7 +781,8 @@ PetscErrorCode SpecFECtxCreateMeshCoords2d(SpecFECtx c)
 PetscErrorCode SpecFECtxScaleMeshCoords(SpecFECtx c,PetscReal scale[],PetscReal shift[])
 {
   PetscErrorCode ierr;
-  Vec coor;
+  Vec coor,lcoor;
+  DM cdm;
   
   ierr = DMGetCoordinates(c->dm,&coor);CHKERRQ(ierr);
   
@@ -809,10 +814,15 @@ PetscErrorCode SpecFECtxScaleMeshCoords(SpecFECtx c,PetscReal scale[],PetscReal 
     ierr = VecDestroy(&ss);CHKERRQ(ierr);
   }
   
+  ierr = DMGetCoordinateDM(c->dm,&cdm);CHKERRQ(ierr);
+  ierr = DMGetCoordinatesLocal(c->dm,&lcoor);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalBegin(c->dm,coor,INSERT_VALUES,lcoor);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(c->dm,coor,INSERT_VALUES,lcoor);CHKERRQ(ierr);
+  
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode SpecFECtxCreateMesh(SpecFECtx c,PetscInt dim,PetscInt mx,PetscInt my,PetscInt mz,PetscInt basisorder,PetscInt ndofs)
+PetscErrorCode SpecFECtxCreateMesh_SEQ(SpecFECtx c,PetscInt dim,PetscInt mx,PetscInt my,PetscInt mz,PetscInt basisorder,PetscInt ndofs)
 {
   PetscErrorCode ierr;
   PetscInt stencil_width,i,j;
@@ -821,12 +831,15 @@ PetscErrorCode SpecFECtxCreateMesh(SpecFECtx c,PetscInt dim,PetscInt mx,PetscInt
   c->mx = mx;
   c->my = my;
   c->mz = mz;
+  c->mx_g = mx;
+  c->my_g = my;
+  c->mz_g = mz;
   c->basisorder = basisorder;
   c->dofs = ndofs;
   
-  c->nx = basisorder*mx + 1;
-  c->ny = basisorder*my + 1;
-  c->nz = basisorder*mz + 1;
+  c->nx_g = basisorder*mx + 1;
+  c->ny_g = basisorder*my + 1;
+  c->nz_g = basisorder*mz + 1;
   
   ierr = CreateGLLCoordsWeights(basisorder,&c->npe_1d,&c->xi1d,&c->w1d);CHKERRQ(ierr);
   
@@ -835,12 +848,13 @@ PetscErrorCode SpecFECtxCreateMesh(SpecFECtx c,PetscInt dim,PetscInt mx,PetscInt
     case 2:
     c->npe = c->npe_1d * c->npe_1d;
     c->ne = mx * my;
+    c->ne_g = mx * my;
     
     ierr = DMDACreate2d(PETSC_COMM_WORLD,DM_BOUNDARY_NONE,DM_BOUNDARY_NONE,DMDA_STENCIL_BOX,
-                        c->nx,c->ny,PETSC_DECIDE,PETSC_DECIDE,ndofs,stencil_width,NULL,NULL,&c->dm);CHKERRQ(ierr);
+                        c->nx_g,c->ny_g,PETSC_DECIDE,PETSC_DECIDE,ndofs,stencil_width,NULL,NULL,&c->dm);CHKERRQ(ierr);
     ierr = DMSetUp(c->dm);CHKERRQ(ierr);
-    ierr = SpecFECtxCreateENMap2d(c);CHKERRQ(ierr);
-    ierr = SpecFECtxCreateMeshCoords2d(c);CHKERRQ(ierr);
+    ierr = SpecFECtxCreateENMap2d_SEQ(c);CHKERRQ(ierr);
+    ierr = SpecFECtxCreateMeshCoords2d_SEQ(c);CHKERRQ(ierr);
     
     /* tensor product for weights */
     ierr = PetscMalloc(sizeof(PetscReal)*c->npe,&c->w);CHKERRQ(ierr);
@@ -866,6 +880,268 @@ PetscErrorCode SpecFECtxCreateMesh(SpecFECtx c,PetscInt dim,PetscInt mx,PetscInt
   ierr = PetscMalloc(sizeof(PetscReal)*c->npe*c->dofs,&c->elbuf_field2);CHKERRQ(ierr);
   ierr = PetscMalloc(sizeof(PetscInt)*c->npe*c->dofs,&c->elbuf_dofs);CHKERRQ(ierr);
   
+  PetscFunctionReturn(0);
+}
+
+/*
+ Degree 4 has 5 basis in each direction
+ |           |
+ 0--1--2--3--4
+*/
+PetscErrorCode SpecFECtxGetCornerBasis_MPI(SpecFECtx c,PetscInt *si,PetscInt *si_g,PetscInt *sj,PetscInt *sj_g)
+{
+  PetscInt gi,gj,m,n,k;
+  PetscErrorCode ierr;
+
+  ierr = DMDAGetGhostCorners(c->dm,&gi,&gj,NULL,&m,&n,NULL);CHKERRQ(ierr);
+  /*printf("rank %d: gi,gj %d %d  npe %d\n",c->rank,gi,gj,c->npe_1d);*/
+  for (k=0; k<m; k++) {
+    if (((gi+k) % (c->npe_1d-1)) == 0) {
+      *si = k;
+      *si_g = gi+k;
+      break;
+    }
+  }
+  for (k=0; k<n; k++) {
+    if (((gj+k) % (c->npe_1d-1)) == 0) {
+      *sj = k;
+      *sj_g = gj+k;
+      break;
+    }
+  }
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SpecFECtxGetLocalBoundingBox(SpecFECtx c,PetscReal gmin[],PetscReal gmax[])
+{
+  PetscErrorCode ierr;
+  PetscInt si[2],si_g[2],m,n,ii,jj;
+  const PetscReal *LA_coor;
+  Vec coor;
+  
+  ierr = SpecFECtxGetCornerBasis_MPI(c,&si[0],&si_g[0],&si[1],&si_g[1]);CHKERRQ(ierr);
+  ierr = DMDAGetGhostCorners(c->dm,NULL,NULL,NULL,&m,&n,NULL);CHKERRQ(ierr);
+  ierr = DMGetCoordinatesLocal(c->dm,&coor);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(coor,&LA_coor);CHKERRQ(ierr);
+  ii = si[0];
+  jj = si[1];
+  gmin[0] = LA_coor[2*(ii + jj*m)+0];
+  gmin[1] = LA_coor[2*(ii + jj*m)+1];
+  ii = si[0] + c->mx * c->basisorder;
+  jj = si[1] + c->my * c->basisorder;
+  gmax[0] = LA_coor[2*(ii + jj*m)+0];
+  gmax[1] = LA_coor[2*(ii + jj*m)+1];
+  ierr = VecRestoreArrayRead(coor,&LA_coor);CHKERRQ(ierr);
+  
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SpecFECtxCreateENMap2d_MPI(SpecFECtx c)
+{
+  PetscErrorCode ierr;
+  PetscInt ni0,nj0,i,j,ei,ej,ecnt,*emap,nid;
+  PetscInt si,si_g,sj,sj_g,nx_local;
+  
+  
+  ierr = PetscMalloc(sizeof(PetscInt)*c->ne*c->npe,&c->element);CHKERRQ(ierr);
+  ierr = PetscMemzero(c->element,sizeof(PetscInt)*c->ne*c->npe);CHKERRQ(ierr);
+  
+  ierr = SpecFECtxGetCornerBasis_MPI(c,&si,&si_g,&sj,&sj_g);CHKERRQ(ierr);
+  ierr = DMDAGetGhostCorners(c->dm,NULL,NULL,NULL,&nx_local,NULL,NULL);CHKERRQ(ierr);
+  /*printf("rank %d : %d %d x %d %d\n",c->rank,si,si_g,sj,sj_g);*/
+  
+  ecnt = 0;
+  for (ej=0; ej<c->my; ej++) {
+    nj0 = sj + ej*(c->npe_1d-1);
+    
+    for (ei=0; ei<c->mx; ei++) {
+      ni0 = si + ei*(c->npe_1d-1);
+      
+      emap = &c->element[c->npe*ecnt];
+      
+      for (j=0; j<c->npe_1d; j++) {
+        for (i=0; i<c->npe_1d; i++) {
+          
+          nid = (ni0 + i) + (nj0 + j) * nx_local;
+          emap[i+j*c->npe_1d] = nid;
+          //if (c->rank == 0) {
+          //  printf("e %d : %d [max %d]\n",ecnt,nid,c->ne*c->npe);
+          //}
+        }
+      }
+      
+      ecnt++;
+    }
+  }
+  
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SpecFECtxCreateMeshCoords2d_MPI(SpecFECtx c)
+{
+  PetscErrorCode ierr;
+  Vec coor,gcoor;
+  DM cdm;
+  PetscInt ei,ej,i,j,ni0,nj0,si,si_g,sj,sj_g,gi,gj,m,n;
+  PetscReal dx,dy,x0,y0;
+  PetscReal *LA_coor;
+  
+  ierr = DMDASetUniformCoordinates(c->dm,0.0,1.0,0.0,1.0,0,0);CHKERRQ(ierr);
+  ierr = DMGetCoordinateDM(c->dm,&cdm);CHKERRQ(ierr);
+  ierr = DMGetCoordinatesLocal(c->dm,&coor);CHKERRQ(ierr);
+
+  ierr = DMGetCoordinates(c->dm,&gcoor);CHKERRQ(ierr);
+  ierr = VecZeroEntries(gcoor);CHKERRQ(ierr);
+  
+  ierr = SpecFECtxGetCornerBasis_MPI(c,&si,&si_g,&sj,&sj_g);CHKERRQ(ierr);
+  ierr = DMDAGetGhostCorners(c->dm,&gi,&gj,NULL,&m,&n,NULL);CHKERRQ(ierr);
+
+  dx = 1.0/((PetscReal)c->mx_g);
+  dy = 1.0/((PetscReal)c->my_g);
+  ierr = VecGetArray(coor,&LA_coor);CHKERRQ(ierr);
+  for (ej=0; ej<c->my; ej++) {
+    
+    for (ei=0; ei<c->mx; ei++) {
+      if ( si >= m*n) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"Out of range-si");
+      if ( sj >= m*n) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"Out of range-sj");
+
+      x0 = LA_coor[2*(si + sj*m)+0] + ei*dx;
+      y0 = LA_coor[2*(si + sj*m)+1] + ej*dy;
+
+      ni0 = si + ei*(c->npe_1d-1);
+      nj0 = sj + ej*(c->npe_1d-1);
+      
+      //printf("rank %d : (%d,%d) -> %d %d  %+1.4e %+1.4e\n",c->rank,ei,ej,ni0,nj0,x0,y0);
+      
+      for (j=0; j<c->npe_1d; j++) {
+        for (i=0; i<c->npe_1d; i++) {
+          if ( (ni0+i)+(nj0+j)*m >= m*n) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"Local index out of range");
+
+          LA_coor[2*((ni0+i) + (nj0+j)*m)+0] = x0 + 0.5*(c->xi1d[i]+1.0)*dx;
+          LA_coor[2*((ni0+i) + (nj0+j)*m)+1] = y0 + 0.5*(c->xi1d[j]+1.0)*dy;
+          
+          ierr = VecSetValueLocal(gcoor,2*((ni0+i) + (nj0+j)*m)+0,x0 + 0.5*(c->xi1d[i]+1.0)*dx,INSERT_VALUES);CHKERRQ(ierr);
+          ierr = VecSetValueLocal(gcoor,2*((ni0+i) + (nj0+j)*m)+1,y0 + 0.5*(c->xi1d[j]+1.0)*dy,INSERT_VALUES);CHKERRQ(ierr);
+        }
+      }
+    }
+  }
+  ierr = VecRestoreArray(coor,&LA_coor);CHKERRQ(ierr);
+  ierr = VecAssemblyBegin(gcoor);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(gcoor);CHKERRQ(ierr);
+
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SpecFECtxCreateMesh_MPI(SpecFECtx c,PetscInt dim,PetscInt mx,PetscInt my,PetscInt mz,PetscInt basisorder,PetscInt ndofs)
+{
+  PetscErrorCode ierr;
+  PetscInt stencil_width,i,j;
+  DM dm_ref;
+  PetscInt ranks[3];
+  PetscInt r,*lx,*ly;
+  const PetscInt *lx_ref,*ly_ref;
+  DMDALocalInfo info;
+  
+  c->dim = dim;
+  c->mx_g = mx;
+  c->my_g = my;
+  c->mz_g = mz;
+  c->basisorder = basisorder;
+  c->dofs = ndofs;
+  
+  c->nx_g = basisorder*mx + 1;
+  c->ny_g = basisorder*my + 1;
+  c->nz_g = basisorder*mz + 1;
+  
+  ierr = CreateGLLCoordsWeights(basisorder,&c->npe_1d,&c->xi1d,&c->w1d);CHKERRQ(ierr);
+  
+  stencil_width = 1;
+  switch (dim) {
+    case 2:
+    c->npe = c->npe_1d * c->npe_1d;
+    c->ne_g = mx * my;
+
+    ierr = DMDACreate2d(PETSC_COMM_WORLD,DM_BOUNDARY_NONE,DM_BOUNDARY_NONE,DMDA_STENCIL_BOX,
+                        c->mx_g,c->my_g,PETSC_DECIDE,PETSC_DECIDE,1,0,NULL,NULL,&dm_ref);CHKERRQ(ierr);
+    ierr = DMSetUp(dm_ref);CHKERRQ(ierr);
+    /*ierr = DMView(dm_ref,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr); */
+
+    ierr = DMDAGetInfo(dm_ref,NULL,NULL,NULL,NULL,&ranks[0],&ranks[1],NULL,NULL,NULL,NULL,NULL,NULL,NULL);CHKERRQ(ierr);
+    ierr = DMDAGetOwnershipRanges(dm_ref,&lx_ref,&ly_ref,NULL);CHKERRQ(ierr);
+    ierr = DMDAGetLocalInfo(dm_ref,&info);CHKERRQ(ierr);
+    
+    c->mx = info.xm;
+    c->my = info.ym;
+    c->ne = c->mx * c->my;
+    
+    ierr = PetscMalloc1(ranks[0],&lx);CHKERRQ(ierr);
+    ierr = PetscMalloc1(ranks[1],&ly);CHKERRQ(ierr);
+    for (r=0; r<ranks[0]; r++) {
+      lx[r] = lx_ref[r] * (c->npe_1d - 1);
+    }
+    lx[ranks[0]-1]++;
+
+    /*for (r=0; r<ranks[0]; r++)  PetscPrintf(PETSC_COMM_WORLD,"npoints-i[%D] %D \n",r,lx[r]);*/
+    
+    for (r=0; r<ranks[1]; r++) {
+      ly[r] = ly_ref[r] * (c->npe_1d - 1);
+    }
+    ly[ranks[1]-1]++;
+    
+    /*for (r=0; r<ranks[1]; r++)  PetscPrintf(PETSC_COMM_WORLD,"npoints-j[%D] %D \n",r,ly[r]);*/
+    
+    ierr = DMDACreate2d(PETSC_COMM_WORLD,DM_BOUNDARY_NONE,DM_BOUNDARY_NONE,DMDA_STENCIL_BOX,
+                        c->nx_g,c->ny_g,ranks[0],ranks[1],ndofs,stencil_width,lx,ly,&c->dm);CHKERRQ(ierr);
+    ierr = DMSetUp(c->dm);CHKERRQ(ierr);
+    /*ierr = DMView(c->dm,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr); */
+
+    ierr = SpecFECtxCreateENMap2d_MPI(c);CHKERRQ(ierr);
+    ierr = SpecFECtxCreateMeshCoords2d_MPI(c);CHKERRQ(ierr);
+    
+    /* tensor product for weights */
+    ierr = PetscMalloc(sizeof(PetscReal)*c->npe,&c->w);CHKERRQ(ierr);
+    for (j=0; j<c->npe_1d; j++) {
+      for (i=0; i<c->npe_1d; i++) {
+        c->w[i+j*c->npe_1d] = c->w1d[i] * c->w1d[j];
+      }
+    }
+    
+    ierr = TabulateBasisDerivativesTensorProduct2d(basisorder,&c->dN_dxi,&c->dN_deta);CHKERRQ(ierr);
+    ierr = TabulateBasisDerivativesTensorProduct2d(basisorder,&c->dN_dx,&c->dN_dy);CHKERRQ(ierr);
+    
+    ierr = PetscFree(lx);CHKERRQ(ierr);
+    ierr = PetscFree(ly);CHKERRQ(ierr);
+    ierr = DMDestroy(&dm_ref);CHKERRQ(ierr);
+    break;
+  }
+  
+  c->nqp = c->npe;
+  
+  ierr = PetscMalloc(sizeof(QPntIsotropicElastic)*c->ne,&c->cell_data);CHKERRQ(ierr);
+  ierr = PetscMemzero(c->cell_data,sizeof(QPntIsotropicElastic)*c->ne);CHKERRQ(ierr);
+  
+  ierr = PetscMalloc(sizeof(PetscReal)*c->npe*c->dim,&c->elbuf_coor);CHKERRQ(ierr);
+  ierr = PetscMalloc(sizeof(PetscReal)*c->npe*c->dofs,&c->elbuf_field);CHKERRQ(ierr);
+  ierr = PetscMalloc(sizeof(PetscReal)*c->npe*c->dofs,&c->elbuf_field2);CHKERRQ(ierr);
+  ierr = PetscMalloc(sizeof(PetscInt)*c->npe*c->dofs,&c->elbuf_dofs);CHKERRQ(ierr);
+  
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SpecFECtxCreateMesh(SpecFECtx c,PetscInt dim,PetscInt mx,PetscInt my,PetscInt mz,PetscInt basisorder,PetscInt ndofs)
+{
+  PetscMPIInt size;
+  PetscErrorCode ierr;
+  
+  ierr = MPI_Comm_size(PETSC_COMM_WORLD,&size);CHKERRQ(ierr);
+  if (size == 1) {
+    ierr = SpecFECtxCreateMesh_SEQ(c,dim,mx,my,mz,basisorder,ndofs);CHKERRQ(ierr);
+  } else {
+    ierr = SpecFECtxCreateMesh_MPI(c,dim,mx,my,mz,basisorder,ndofs);CHKERRQ(ierr);
+  }
+  ierr = DMDASetFieldName(c->dm,0,"_x");CHKERRQ(ierr);
+  ierr = DMDASetFieldName(c->dm,1,"_y");CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -895,6 +1171,67 @@ PetscErrorCode SpecFECtxSetConstantMaterialProperties_Velocity(SpecFECtx c,Petsc
   PetscPrintf(PETSC_COMM_WORLD,"  [material] lambda = %1.8e\n",lambda);
   PetscPrintf(PETSC_COMM_WORLD,"  [material]     mu = %1.8e\n",mu);
   PetscPrintf(PETSC_COMM_WORLD,"  [material]    rho = %1.8e\n",rho);
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SpecFECtxSetPerturbedMaterialProperties_Velocity(SpecFECtx c,PetscReal Vp0,PetscReal delta_Vp,PetscReal Vs0,PetscReal delta_Vs,PetscReal rho0,PetscReal delta_rho)
+{
+  PetscErrorCode ierr;
+  Vec Vp,Vs,rho;
+  PetscRandom r;
+  const PetscReal *LA_Vp,*LA_Vs,*LA_rho;
+  PetscInt e;
+  
+  ierr = VecCreate(PETSC_COMM_WORLD,&Vp);CHKERRQ(ierr);
+  ierr = VecSetSizes(Vp,c->ne,c->ne_g);CHKERRQ(ierr);
+  ierr = VecSetFromOptions(Vp);CHKERRQ(ierr);
+  ierr = VecDuplicate(Vp,&Vs);CHKERRQ(ierr);
+  ierr = VecDuplicate(Vp,&rho);CHKERRQ(ierr);
+
+  ierr = PetscRandomCreate(PETSC_COMM_WORLD,&r);CHKERRQ(ierr);
+  ierr = PetscRandomSetType(r,PETSCRAND48);CHKERRQ(ierr);
+
+  ierr = PetscRandomSetInterval(r,Vp0-delta_Vp,Vp0+delta_Vp);CHKERRQ(ierr);
+  ierr = PetscRandomSetSeed(r,1);CHKERRQ(ierr);
+  ierr = PetscRandomSeed(r);CHKERRQ(ierr);
+  ierr = VecSetRandom(Vp,r);CHKERRQ(ierr);
+
+  ierr = PetscRandomSetInterval(r,Vs0-delta_Vs,Vs0+delta_Vs);CHKERRQ(ierr);
+  ierr = PetscRandomSetSeed(r,2);CHKERRQ(ierr);
+  ierr = PetscRandomSeed(r);CHKERRQ(ierr);
+  ierr = VecSetRandom(Vs,r);CHKERRQ(ierr);
+  
+  ierr = PetscRandomSetInterval(r,rho0-delta_rho,rho0+delta_rho);CHKERRQ(ierr);
+  ierr = PetscRandomSetSeed(r,3);CHKERRQ(ierr);
+  ierr = PetscRandomSeed(r);CHKERRQ(ierr);
+  ierr = VecSetRandom(rho,r);CHKERRQ(ierr);
+
+  ierr = PetscRandomDestroy(&r);CHKERRQ(ierr);
+
+  ierr = VecGetArrayRead(Vp,&LA_Vp);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(Vs,&LA_Vs);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(rho,&LA_rho);CHKERRQ(ierr);
+  for (e=0; e<c->ne; e++) {
+    PetscReal mu,lambda;
+
+    mu     = LA_Vs[e] * LA_Vs[e] * LA_rho[e];
+    lambda = LA_Vp[e] * LA_Vp[e] * LA_rho[e] - 2.0 * mu;
+    
+    c->cell_data[e].lambda = lambda;
+    c->cell_data[e].mu     = mu;
+    c->cell_data[e].rho    = LA_rho[e];
+  }
+  ierr = VecRestoreArrayRead(rho,&LA_rho);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(Vs,&LA_Vs);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(Vp,&LA_Vp);CHKERRQ(ierr);
+
+  PetscPrintf(PETSC_COMM_WORLD,"  [material]     Vp0 = %1.8e : delta = %+1.8e\n",Vp0,delta_Vp);
+  PetscPrintf(PETSC_COMM_WORLD,"  [material]     Vs0 = %1.8e : delta = %+1.8e\n",Vs0,delta_Vs);
+  PetscPrintf(PETSC_COMM_WORLD,"  [material]    rho0 = %1.8e : delta = %+1.8e\n",rho0,delta_rho);
+  
+  ierr = VecDestroy(&rho);CHKERRQ(ierr);
+  ierr = VecDestroy(&Vs);CHKERRQ(ierr);
+  ierr = VecDestroy(&Vp);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -952,7 +1289,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics2d(SpecFECtx c,Vec u,Vec F)
   PetscReal e_vec[3],sigma_vec[3];
   PetscInt  *element,*elnidx,*eldofs;
   PetscReal *fe,*ux,*uy,*elcoords,detJ,*field;
-  Vec       coor;
+  Vec       coor,ul,fl;
   const PetscReal *LA_coor,*LA_u;
   QPntIsotropicElastic *celldata;
   
@@ -967,11 +1304,17 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics2d(SpecFECtx c,Vec u,Vec F)
   element  = c->element;
   field    = c->elbuf_field2;
   
-  ierr = DMGetCoordinates(c->dm,&coor);CHKERRQ(ierr);
+  ierr = DMGetCoordinatesLocal(c->dm,&coor);CHKERRQ(ierr);
   ierr = VecGetArrayRead(coor,&LA_coor);CHKERRQ(ierr);
   
-  ierr = VecGetArrayRead(u,&LA_u);CHKERRQ(ierr);
-  
+  ierr = DMGetLocalVector(c->dm,&ul);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalBegin(c->dm,u,INSERT_VALUES,ul);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(c->dm,u,INSERT_VALUES,ul);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(ul,&LA_u);CHKERRQ(ierr);
+
+  ierr = DMGetLocalVector(c->dm,&fl);CHKERRQ(ierr);
+  ierr = VecZeroEntries(fl);CHKERRQ(ierr);
+
   ux = &field[0];
   uy = &field[nbasis];
   
@@ -1070,11 +1413,16 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics2d(SpecFECtx c,Vec u,Vec F)
       }
       
     }
-    ierr = VecSetValues(F,nbasis*ndof,eldofs,fe,ADD_VALUES);CHKERRQ(ierr);
+    //ierr = VecSetValuesLocal(F,nbasis*ndof,eldofs,fe,ADD_VALUES);CHKERRQ(ierr);
+    ierr = VecSetValues(fl,nbasis*ndof,eldofs,fe,ADD_VALUES);CHKERRQ(ierr);
   }
-  ierr = VecAssemblyBegin(F);CHKERRQ(ierr);
-  ierr = VecAssemblyEnd(F);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(u,&LA_u);CHKERRQ(ierr);
+  ierr = VecAssemblyBegin(fl);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(fl);CHKERRQ(ierr);
+  ierr = DMLocalToGlobalBegin(c->dm,fl,ADD_VALUES,F);CHKERRQ(ierr);
+  ierr = DMLocalToGlobalEnd(c->dm,fl,ADD_VALUES,F);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(ul,&LA_u);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(c->dm,&ul);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(c->dm,&fl);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(coor,&LA_coor);CHKERRQ(ierr);
   
   PetscFunctionReturn(0);
@@ -1099,7 +1447,7 @@ PetscErrorCode AssembleBilinearForm_Mass2d(SpecFECtx c,Vec A)
   Me       = c->elbuf_field;
   element  = c->element;
   
-  ierr = DMGetCoordinates(c->dm,&coor);CHKERRQ(ierr);
+  ierr = DMGetCoordinatesLocal(c->dm,&coor);CHKERRQ(ierr);
   ierr = VecGetArrayRead(coor,&LA_coor);CHKERRQ(ierr);
   
   for (e=0; e<c->ne; e++) {
@@ -1140,7 +1488,7 @@ PetscErrorCode AssembleBilinearForm_Mass2d(SpecFECtx c,Vec A)
       index = 2*q + 1;
       Me[index] = Me_ii;
     }
-    ierr = VecSetValues(A,nbasis*ndof,eldofs,Me,ADD_VALUES);CHKERRQ(ierr);
+    ierr = VecSetValuesLocal(A,nbasis*ndof,eldofs,Me,ADD_VALUES);CHKERRQ(ierr);
   }
   ierr = VecAssemblyBegin(A);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(A);CHKERRQ(ierr);
@@ -1164,6 +1512,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
   const PetscReal   *LA_coor;
   Vec         coor;
   
+  if (c->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   ierr = VecZeroEntries(F);CHKERRQ(ierr);
   
   eldofs   = c->elbuf_dofs;
@@ -1181,10 +1530,10 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
   
   /* locate cell containing source */
   ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
-  dx = (gmax[0] - gmin[0])/((PetscReal)c->mx);
-  dy = (gmax[1] - gmin[1])/((PetscReal)c->my);
+  dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
+  dy = (gmax[1] - gmin[1])/((PetscReal)c->my_g);
   for (k=0; k<nsources; k++) {
-    ii = (PetscInt)( ( xs[2*k+0] - gmin[0] )/dx );
+    ii = (PetscInt)( ( xs[2*k+0] - gmin[0] )/dx ); /* todo - needs to be sub-domain gmin */
     jj = (PetscInt)( ( xs[2*k+1] - gmin[1] )/dy );
     
     if (ii == c->mx) ii--;
@@ -1193,8 +1542,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
     if (ii < 0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: x < gmin[0]");
     if (jj < 0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: y < gmin[1]");
     
-    if (ii > c->mx) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: x > gmax[0]");
-    if (jj > c->my) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: y > gmax[1]");
+    if (ii > c->mx_g) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: x > gmax[0]");
+    if (jj > c->my_g) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: y > gmax[1]");
     
     eowner_source[k] = ii + jj * c->mx;
     printf("source[%d] (%+1.4e,%+1.4e) --> element %d \n",k,xs[2*k],xs[2*k+1],eowner_source[k]);
@@ -1290,7 +1639,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
       PetscReal net_torque = 0.0, torque;
       PetscReal Svec[2],Fvec[2],Fvec_normal[2],Fvec_tangent[2],nrmS,nrmF,costheta,theta,unit[2],centroid[2];
       
-      ii = (PetscInt)( ( xs[2*k+0] - gmin[0] )/dx );
+      ii = (PetscInt)( ( xs[2*k+0] - gmin[0] )/dx ); /* todo - needs to be sub-domain gmin */
       jj = (PetscInt)( ( xs[2*k+1] - gmin[1] )/dy );
       
       if (ii == c->mx) ii--;
@@ -1314,8 +1663,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
           Fvec[0] = fe[2*nid];
           Fvec[1] = fe[2*nid+1];
           
-          nrmS = sqrt(Svec[0]*Svec[0] + Svec[1]*Svec[1]); //printf("nrmS = %1.4e\n",nrmS);
-          nrmF = sqrt(Fvec[0]*Fvec[0] + Fvec[1]*Fvec[1]); //printf("nrmF = %1.4e\n",nrmF);
+          nrmS = PetscSqrtReal(Svec[0]*Svec[0] + Svec[1]*Svec[1]); //printf("nrmS = %1.4e\n",nrmS);
+          nrmF = PetscSqrtReal(Fvec[0]*Fvec[0] + Fvec[1]*Fvec[1]); //printf("nrmF = %1.4e\n",nrmF);
           
           if (nrmF < 1.0e-16) continue;
           
@@ -1380,6 +1729,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d(SpecFECtx c,PetscI
   Vec         coor;
   PetscReal   **dN_dxi,**dN_deta;
   
+  if (c->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   ierr = VecZeroEntries(F);CHKERRQ(ierr);
   
   eldofs   = c->elbuf_dofs;
@@ -1396,10 +1746,10 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d(SpecFECtx c,PetscI
   
   /* locate cell containing source */
   ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
-  dx = (gmax[0] - gmin[0])/((PetscReal)c->mx);
-  dy = (gmax[1] - gmin[1])/((PetscReal)c->my);
+  dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
+  dy = (gmax[1] - gmin[1])/((PetscReal)c->my_g);
   for (k=0; k<nsources; k++) {
-    ii = (PetscInt)( ( xs[2*k+0] - gmin[0] )/dx );
+    ii = (PetscInt)( ( xs[2*k+0] - gmin[0] )/dx ); /* todo - needs to be sub-domain gmin */
     jj = (PetscInt)( ( xs[2*k+1] - gmin[1] )/dy );
     
     if (ii == c->mx) ii--;
@@ -1408,8 +1758,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d(SpecFECtx c,PetscI
     if (ii < 0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: x < gmin[0]");
     if (jj < 0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: y < gmin[1]");
     
-    if (ii > c->mx) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: x > gmax[0]");
-    if (jj > c->my) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: y > gmax[1]");
+    if (ii > c->mx_g) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: x > gmax[0]");
+    if (jj > c->my_g) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"source: y > gmax[1]");
     
     eowner_source[k] = ii + jj * c->mx;
     printf("source[%d] (%+1.4e,%+1.4e) --> element %d \n",k,xs[2*k],xs[2*k+1],eowner_source[k]);
@@ -1443,7 +1793,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d(SpecFECtx c,PetscI
     }
     
     /* Get source local coordinates */
-    ii = (PetscInt)( ( xs[2*k+0] - gmin[0] )/dx );
+    ii = (PetscInt)( ( xs[2*k+0] - gmin[0] )/dx ); /* todo - needs to be sub-domain gmin */
     jj = (PetscInt)( ( xs[2*k+1] - gmin[1] )/dy );
     
     if (ii == c->mx) ii--;
@@ -1491,7 +1841,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d(SpecFECtx c,PetscI
       PetscReal net_torque = 0.0, torque;
       PetscReal Svec[2],Fvec[2],Fvec_normal[2],Fvec_tangent[2],nrmS,nrmF,costheta,theta,unit[2],centroid[2];
       
-      ii = (PetscInt)( ( xs[2*k+0] - gmin[0] )/dx );
+      ii = (PetscInt)( ( xs[2*k+0] - gmin[0] )/dx ); /* todo - needs to be sub-domain gmin */
       jj = (PetscInt)( ( xs[2*k+1] - gmin[1] )/dy );
       
       if (ii == c->mx) ii--;
@@ -1515,8 +1865,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d(SpecFECtx c,PetscI
           Fvec[0] = fe[2*nid];
           Fvec[1] = fe[2*nid+1];
           
-          nrmS = sqrt(Svec[0]*Svec[0] + Svec[1]*Svec[1]); //printf("nrmS = %1.4e\n",nrmS);
-          nrmF = sqrt(Fvec[0]*Fvec[0] + Fvec[1]*Fvec[1]); //printf("nrmF = %1.4e\n",nrmF);
+          nrmS = PetscSqrtReal(Svec[0]*Svec[0] + Svec[1]*Svec[1]); //printf("nrmS = %1.4e\n",nrmS);
+          nrmF = PetscSqrtReal(Fvec[0]*Fvec[0] + Fvec[1]*Fvec[1]); //printf("nrmF = %1.4e\n",nrmF);
           
           if (nrmF < 1.0e-16) continue;
           
@@ -1586,9 +1936,10 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_Kernel_CSpline(Spe
   PetscReal gmin[3],gmax[3],dx,dy,ds,kernel_h;
   PetscBool flg;
   
+  if (c->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
-  dx = (gmax[0] - gmin[0])/((PetscReal)c->mx);
-  dy = (gmax[1] - gmin[1])/((PetscReal)c->my);
+  dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
+  dy = (gmax[1] - gmin[1])/((PetscReal)c->my_g);
   ds = dx;
   if (dy > dx) ds = dy;
   
@@ -1681,7 +2032,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_Kernel_CSpline(Spe
         } else {
           smooth_dirac = 0.0;
         }
-        smooth_dirac = 10.0/(7.0*M_PI) * smooth_dirac * (1.0/(kernel_h*kernel_h));
+        smooth_dirac = 10.0/(7.0*PETSC_PI) * smooth_dirac * (1.0/(kernel_h*kernel_h));
         
         /* compute moment contribution @ source */
         for (i=0; i<nbasis; i++) {
@@ -1721,6 +2072,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_P0(SpecFECtx c,Pet
   Vec         coor;
   PetscReal   **dN_dxi,**dN_deta;
   
+  if (c->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   ierr = VecZeroEntries(F);CHKERRQ(ierr);
   
   eldofs   = c->elbuf_dofs;
@@ -1737,10 +2089,10 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_P0(SpecFECtx c,Pet
   
   /* locate cell containing source */
   ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
-  dx = (gmax[0] - gmin[0])/((PetscReal)c->mx);
-  dy = (gmax[1] - gmin[1])/((PetscReal)c->my);
+  dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
+  dy = (gmax[1] - gmin[1])/((PetscReal)c->my_g);
   for (k=0; k<nsources; k++) {
-    ii = (PetscInt)( ( xs[2*k+0] - gmin[0] )/dx );
+    ii = (PetscInt)( ( xs[2*k+0] - gmin[0] )/dx ); /* todo - needs to be sub-domain gmin */
     jj = (PetscInt)( ( xs[2*k+1] - gmin[1] )/dy );
     
     if (ii == c->mx) ii--;
@@ -1783,13 +2135,13 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_P0(SpecFECtx c,Pet
     }
     
     /* Get source local coordinates */
-    ii = (PetscInt)( ( xs[2*k+0] - gmin[0] )/dx );
+    ii = (PetscInt)( ( xs[2*k+0] - gmin[0] )/dx ); /* todo - needs to be sub-domain gmin */
     jj = (PetscInt)( ( xs[2*k+1] - gmin[1] )/dy );
     
     if (ii == c->mx) ii--;
     if (jj == c->my) jj--;
     
-    cell_min[0] = gmin[0] + ii * dx;
+    cell_min[0] = gmin[0] + ii * dx; /* todo - needs to be sub-domain gmin */
     cell_min[1] = gmin[1] + jj * dy;
     
     xi_source[0] = 0.0;
@@ -1924,7 +2276,7 @@ PetscErrorCode ElastoDynamicsConvertLame2Velocity(PetscReal rho,PetscReal mu,Pet
 PetscErrorCode ElastoDynamicsComputeTimeStep_2d(SpecFECtx ctx,PetscReal *_dt)
 {
   PetscInt e,q,order;
-  PetscReal dt_min,polynomial_fac;
+  PetscReal dt_min,dt_min_g,polynomial_fac;
   QPntIsotropicElastic *qpdata;
   PetscReal gmin[3],gmax[3],min_el_r,dx,dy;
   PetscErrorCode ierr;
@@ -1937,12 +2289,32 @@ PetscErrorCode ElastoDynamicsComputeTimeStep_2d(SpecFECtx ctx,PetscReal *_dt)
   polynomial_fac = 1.0 / (2.0 * (PetscReal)order + 1.0);
   
   ierr = DMDAGetBoundingBox(ctx->dm,gmin,gmax);CHKERRQ(ierr);
-  dx = (gmax[0] - gmin[0])/((PetscReal)ctx->mx);
-  dy = (gmax[1] - gmin[1])/((PetscReal)ctx->my);
+  dx = (gmax[0] - gmin[0])/((PetscReal)ctx->mx_g);
+  dy = (gmax[1] - gmin[1])/((PetscReal)ctx->my_g);
   
   min_el_r = dx;
   min_el_r = PetscMin(min_el_r,dy);
   
+  /* find smallest dx across the element in local coordinates */
+  {
+    PetscInt  n;
+    PetscReal sep2min,sep2;
+    
+    sep2min = 1.0e32;
+    for (n=0; n<ctx->npe_1d-1; n++) {
+      sep2 = PetscAbsReal(ctx->xi1d[n+1] - ctx->xi1d[n]);
+      /*printf(" xi %+1.4e [n] : xi %+1.4e [n+1] : delta_xi %+1.6e\n",ctx->xi1d[n],ctx->xi1d[n+1],sep2); */
+      if (sep2 < sep2min) {
+        sep2min = sep2;
+      }
+    }
+    
+    polynomial_fac = 1.0;
+    min_el_r = min_el_r * ( sep2min / 2.0 ); /* the factor 2.0 here is associated with the size of the element in the local coordinate system xi \in [-1,+1] */
+  }
+  
+  
+
   
   for (e=0; e<ctx->ne; e++) {
     PetscReal max_el_Vp,value;
@@ -1965,19 +2337,20 @@ PetscErrorCode ElastoDynamicsComputeTimeStep_2d(SpecFECtx ctx,PetscReal *_dt)
       max_el_Vp = PetscMax(max_el_Vp,qp_Vp);
     }
     
-    value = polynomial_fac * 2.0 * min_el_r / max_el_Vp;
+    value = polynomial_fac * 1.0 * min_el_r / max_el_Vp;
     
     dt_min = PetscMin(dt_min,value);
   }
+  ierr = MPI_Allreduce(&dt_min,&dt_min_g,1,MPIU_SCALAR,MPI_MIN,PETSC_COMM_WORLD);CHKERRQ(ierr);
   
-  *_dt = dt_min;
+  *_dt = dt_min_g;
   
   PetscFunctionReturn(0);
 }
 
 PetscErrorCode RecordUV(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,Vec v)
 {
-  FILE *fp;
+  FILE *fp = NULL;
   PetscReal gmin[3],gmax[3],dx,dy,sep2min,sep2;
   const PetscReal *LA_u,*LA_v,*LA_c;
   Vec coor;
@@ -1986,22 +2359,23 @@ PetscErrorCode RecordUV(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,Vec v)
   PetscInt ni,nj,ei,ej,n,nid,eid,*element,*elbasis;
   static char filename[PETSC_MAX_PATH_LEN];
   
+  if (c->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   if (!beenhere) {
     switch (c->source_implementation) {
       case -1:
-      sprintf(filename,"defaultsource-receiverCP-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
+      ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"defaultsource-receiverCP-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
       break;
       case 0:
-      sprintf(filename,"deltasource-receiverCP-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
+      ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"deltasource-receiverCP-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
       break;
       case 1:
-      sprintf(filename,"closestqpsource-receiverCP-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
+      ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"closestqpsource-receiverCP-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
       break;
       case 2:
-      sprintf(filename,"csplinesource-receiverCP-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
+      ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"csplinesource-receiverCP-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
       break;
       case 3:
-      sprintf(filename,"p0source-receiverCP-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
+      ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"p0source-receiverCP-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
       break;
       default:
       break;
@@ -2009,11 +2383,11 @@ PetscErrorCode RecordUV(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,Vec v)
   }
   
   ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
-  dx = (gmax[0] - gmin[0])/((PetscReal)c->mx);
-  ei = (xr[0] - gmin[0])/dx;
+  dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
+  ei = (xr[0] - gmin[0])/dx; /* todo - needs to be sub-domain gmin */
   
-  dy = (gmax[1] - gmin[1])/((PetscReal)c->my);
-  ej = (xr[1] - gmin[1])/dy;
+  dy = (gmax[1] - gmin[1])/((PetscReal)c->my_g);
+  ej = (xr[1] - gmin[1])/dy; /* todo - needs to be sub-domain gmin */
   
   eid = ei + ej * c->mx;
   
@@ -2021,7 +2395,7 @@ PetscErrorCode RecordUV(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,Vec v)
   element = c->element;
   elbasis = &element[c->npe*eid];
   
-  DMGetCoordinates(c->dm,&coor);
+  ierr = DMGetCoordinates(c->dm,&coor);CHKERRQ(ierr);
   ierr = VecGetArrayRead(coor,&LA_c);CHKERRQ(ierr);
   
   // find closest //
@@ -2038,18 +2412,20 @@ PetscErrorCode RecordUV(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,Vec v)
   
   if (!beenhere) {
     fp = fopen(filename,"w");
+    if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
     fprintf(fp,"# SpecFECtx meta data\n");
-    fprintf(fp,"#   mx %d : my %d : basis order %d\n",c->mx,c->my,c->basisorder);
+    fprintf(fp,"#   mx %d : my %d : basis order %d\n",c->mx_g,c->my_g,c->basisorder);
     fprintf(fp,"#   source implementation %d\n",c->source_implementation);
-    fprintf(fp,"# Reciever meta data\n");
+    fprintf(fp,"# Receiver meta data\n");
     fprintf(fp,"#   + receiver location: x,y %+1.8e %+1.8e\n",xr[0],xr[1]);
-    fprintf(fp,"#   + takes displ/velo from basis nearest to requested reciever location\n");
+    fprintf(fp,"#   + takes displ/velo from basis nearest to requested receiver location\n");
     fprintf(fp,"#   + receiver location: x,y %+1.8e %+1.8e --mapped to nearest node --> %+1.8e %+1.8e\n",xr[0],xr[1],LA_c[2*nid],LA_c[2*nid+1]);
     fprintf(fp,"# Time series header\n");
     fprintf(fp,"#   time ux uy vx vy\n");
     beenhere = PETSC_TRUE;
   } else {
     fp = fopen(filename,"a");
+    if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
   }
   
   ierr = VecGetArrayRead(u,&LA_u);CHKERRQ(ierr);
@@ -2068,7 +2444,7 @@ PetscErrorCode RecordUV(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,Vec v)
 
 PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,Vec v)
 {
-  FILE *fp;
+  FILE *fp = NULL;
   PetscReal gmin[3],gmax[3],dx,dy,ur[2],vr[2];
   const PetscReal *LA_u,*LA_v;
   static PetscBool beenhere = PETSC_FALSE;
@@ -2077,22 +2453,23 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
   static PetscReal N[400];
   static char filename[PETSC_MAX_PATH_LEN];
   
+  if (c->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   if (!beenhere) {
     switch (c->source_implementation) {
       case -1:
-      sprintf(filename,"defaultsource-receiver-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
+      ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"defaultsource-receiver-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
       break;
       case 0:
-      sprintf(filename,"deltasource-receiver-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
+      ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"deltasource-receiver-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
       break;
       case 1:
-      sprintf(filename,"closestqpsource-receiver-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
+      ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"closestqpsource-receiver-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
       break;
       case 2:
-      sprintf(filename,"csplinesource-receiver-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
+      ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"csplinesource-receiver-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
       break;
       case 3:
-      sprintf(filename,"p0source-receiver-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
+      ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"p0source-receiver-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
       break;
       default:
       break;
@@ -2101,24 +2478,26 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
   
   if (!beenhere) {
     fp = fopen(filename,"w");
+    if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
     fprintf(fp,"# SpecFECtx meta data\n");
-    fprintf(fp,"#   mx %d : my %d : basis order %d\n",c->mx,c->my,c->basisorder);
+    fprintf(fp,"#   mx %d : my %d : basis order %d\n",c->mx_g,c->my_g,c->basisorder);
     fprintf(fp,"#   source implementation %d\n",c->source_implementation);
-    fprintf(fp,"# Reciever meta data\n");
+    fprintf(fp,"# Receiver meta data\n");
     fprintf(fp,"#   + receiver location: x,y %+1.8e %+1.8e\n",xr[0],xr[1]);
-    fprintf(fp,"#   + records displ/velo at requested reciever location through interpolating the FE solution\n");
+    fprintf(fp,"#   + records displ/velo at requested receiver location through interpolating the FE solution\n");
     fprintf(fp,"# Time series header\n");
     fprintf(fp,"#   time ux uy vx vy\n");
   } else {
     fp = fopen(filename,"a");
+    if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
   }
   
   /* get containing element */
   ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
-  dx = (gmax[0] - gmin[0])/((PetscReal)c->mx);
-  ei = (xr[0] - gmin[0])/dx;
+  dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
+  ei = (xr[0] - gmin[0])/dx; /* todo - needs to be sub-domain gmin */
   
-  dy = (gmax[1] - gmin[1])/((PetscReal)c->my);
+  dy = (gmax[1] - gmin[1])/((PetscReal)c->my_g);
   ej = (xr[1] - gmin[1])/dy;
   
   eid = ei + ej * c->mx;
@@ -2136,7 +2515,7 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
     /* compute xi,eta */
     ierr = DMGetCoordinates(c->dm,&coor);CHKERRQ(ierr);
     
-    x0 = gmin[0] + ei*dx;
+    x0 = gmin[0] + ei*dx; /* todo - needs to be sub-domain gmin */
     y0 = gmin[1] + ej*dy;
     
     // (xi - (-1))/2 = (x - x0)/dx
@@ -2201,9 +2580,9 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode RecordUVA_MultipleStations_NearestGLL(SpecFECtx c,PetscReal time,PetscInt nr,PetscReal xr[],Vec u,Vec v,Vec a)
+PetscErrorCode RecordUVA_MultipleStations_NearestGLL_SEQ(SpecFECtx c,PetscReal time,PetscInt nr,PetscReal xr[],Vec u,Vec v,Vec a)
 {
-  FILE             *fp;
+  FILE             *fp = NULL;
   const PetscReal  *LA_u,*LA_v,*LA_a;
   static PetscBool beenhere = PETSC_FALSE;
   static char      filename[PETSC_MAX_PATH_LEN];
@@ -2212,13 +2591,14 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL(SpecFECtx c,PetscReal time,
   PetscErrorCode   ierr;
 
   
+  if (c->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Supports sequential only");
   if (!beenhere) {
     const PetscReal *LA_c;
     Vec coor;
     PetscReal gmin[3],gmax[3],dx,dy,sep2min,sep2;
     PetscInt ni,nj,ei,ej,n,nid,eid,*element,*elbasis;
     
-    sprintf(filename,"closestqpsource-receiverCP-uva-%dx%d-p%d.dat",c->mx,c->my,c->basisorder);
+    ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"closestqpsource-receiverCP-uva-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
     ierr = PetscMalloc1(nr,&nid_list);CHKERRQ(ierr);
     
     ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
@@ -2232,15 +2612,15 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL(SpecFECtx c,PetscReal time,
       if (xr[2*r+0] > gmax[0]) SETERRQ3(PETSC_COMM_SELF,PETSC_ERR_USER,"Receiver %D, x-coordinate (%+1.4e) > max(domain).x (%+1.4e)",r,xr[2*r+0],gmax[0]);
       if (xr[2*r+1] > gmax[1]) SETERRQ3(PETSC_COMM_SELF,PETSC_ERR_USER,"Receiver %D, y-coordinate (%+1.4e) > max(domain).y (%+1.4e)",r,xr[2*r+1],gmax[1]);
       
-      dx = (gmax[0] - gmin[0])/((PetscReal)c->mx);
+      dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
       ei = (xr[2*r+0] - gmin[0])/dx;
-      if (ei == c->mx) ei--;
+      if (ei == c->mx_g) ei--;
       
-      dy = (gmax[1] - gmin[1])/((PetscReal)c->my);
+      dy = (gmax[1] - gmin[1])/((PetscReal)c->my_g);
       ej = (xr[2*r+1] - gmin[1])/dy;
-      if (ej == c->my) ej--;
+      if (ej == c->my_g) ej--;
       
-      eid = ei + ej * c->mx;
+      eid = ei + ej * c->mx_g;
     
       /* get element -> node map */
       element = c->element;
@@ -2261,11 +2641,12 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL(SpecFECtx c,PetscReal time,
     }
   
     fp = fopen(filename,"w");
+    if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
     fprintf(fp,"# SpecFECtx meta data\n");
-    fprintf(fp,"#   mx %d : my %d : basis order %d\n",c->mx,c->my,c->basisorder);
-    fprintf(fp,"# Reciever meta data\n");
-    fprintf(fp,"#   + number reciever locations: %d\n",nr);
-    fprintf(fp,"#   + takes displ/velo/accel from basis nearest to requested reciever location\n");
+    fprintf(fp,"#   mx %d : my %d : basis order %d\n",c->mx_g,c->my_g,c->basisorder);
+    fprintf(fp,"# Receiver meta data\n");
+    fprintf(fp,"#   + number receiver locations: %d\n",nr);
+    fprintf(fp,"#   + takes displ/velo/accel from basis nearest to requested receiver location\n");
     for (r=0; r<nr; r++) {
       fprintf(fp,"#   + receiver location [%d]: x,y %+1.8e %+1.8e\n",r,xr[2*r+0],xr[2*r+1]);
       fprintf(fp,"#   +   mapped to nearest node --> %+1.8e %+1.8e\n",LA_c[2*nid_list[r]],LA_c[2*nid_list[r]+1]);
@@ -2281,6 +2662,7 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL(SpecFECtx c,PetscReal time,
     beenhere = PETSC_TRUE;
   } else {
     fp = fopen(filename,"a");
+    if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
   }
   
   ierr = VecGetArrayRead(u,&LA_u);CHKERRQ(ierr);
@@ -2302,36 +2684,355 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL(SpecFECtx c,PetscReal time,
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal time,PetscInt nr,PetscReal xr[],Vec u,Vec v,Vec a)
+{
+  FILE             *fp = NULL;
+  const PetscReal  *LA_u,*LA_v,*LA_a,*LA_c;
+  static PetscBool beenhere = PETSC_FALSE;
+  static char      filename[PETSC_MAX_PATH_LEN];
+  static PetscInt  *nid_list = NULL;
+  static PetscInt  *eid_list = NULL;
+  static PetscInt  *gll_list = NULL;
+  static PetscInt  nr_local = 0;
+  PetscInt         r,k;
+  Vec              lu,lv,la,coor;
+  PetscErrorCode   ierr;
+  
+  
+  if (!beenhere) {
+    PetscReal       gmin[3],gmax[3],gmin_domain[3],gmax_domain[3],dx,dy,sep2min,sep2;
+    PetscInt        ni,nj,ei,ej,n,nid,gllid,eid,*element,*elbasis;
+    
+    ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"closestqpsource-receiverCP-uva-%Dx%D-p%D-rank%d.dat",c->mx_g,c->my_g,c->basisorder,(int)c->rank);CHKERRQ(ierr);
+    ierr = PetscMalloc1(nr,&nid_list);CHKERRQ(ierr);
+    ierr = PetscMalloc1(nr,&eid_list);CHKERRQ(ierr);
+    ierr = PetscMalloc1(nr,&gll_list);CHKERRQ(ierr);
+    for (r=0; r<nr; r++) {
+      nid_list[r] = -1;
+      eid_list[r] = -1;
+      gll_list[r] = -1;
+    }
+
+    ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
+    ierr = SpecFECtxGetLocalBoundingBox(c,gmin_domain,gmax_domain);CHKERRQ(ierr);
+    
+    ierr = DMGetCoordinatesLocal(c->dm,&coor);CHKERRQ(ierr);
+    ierr = VecGetArrayRead(coor,&LA_c);CHKERRQ(ierr);
+    
+    for (r=0; r<nr; r++) {
+      int count,recv_count;
+      PetscBool receiver_found = PETSC_TRUE;
+      int rank,rank_min_g;
+      
+      if (xr[2*r+0] < gmin[0]) SETERRQ3(PETSC_COMM_SELF,PETSC_ERR_USER,"Receiver %D, x-coordinate (%+1.4e) < min(domain).x (%+1.4e)",r,xr[2*r+0],gmin[0]);
+      if (xr[2*r+1] < gmin[1]) SETERRQ3(PETSC_COMM_SELF,PETSC_ERR_USER,"Receiver %D, y-coordinate (%+1.4e) < min(domain).y (%+1.4e)",r,xr[2*r+1],gmin[1]);
+      if (xr[2*r+0] > gmax[0]) SETERRQ3(PETSC_COMM_SELF,PETSC_ERR_USER,"Receiver %D, x-coordinate (%+1.4e) > max(domain).x (%+1.4e)",r,xr[2*r+0],gmax[0]);
+      if (xr[2*r+1] > gmax[1]) SETERRQ3(PETSC_COMM_SELF,PETSC_ERR_USER,"Receiver %D, y-coordinate (%+1.4e) > max(domain).y (%+1.4e)",r,xr[2*r+1],gmax[1]);
+      
+      if (xr[2*r+0] < gmin_domain[0]) receiver_found = PETSC_FALSE;
+      if (xr[2*r+1] < gmin_domain[1]) receiver_found = PETSC_FALSE;
+      if (xr[2*r+0] > gmax_domain[0]) receiver_found = PETSC_FALSE;
+      if (xr[2*r+1] > gmax_domain[1]) receiver_found = PETSC_FALSE;
+      
+      dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
+      ei = (xr[2*r+0] - gmin_domain[0])/dx;
+      if (ei == c->mx) ei--;
+      
+      dy = (gmax[1] - gmin[1])/((PetscReal)c->my_g);
+      ej = (xr[2*r+1] - gmin_domain[1])/dy;
+      if (ej == c->my) ej--;
+      
+      if (ei < 0) receiver_found = PETSC_FALSE;
+      if (ej < 0) receiver_found = PETSC_FALSE;
+      
+      if (ei > c->mx) receiver_found = PETSC_FALSE;
+      if (ej > c->my) receiver_found = PETSC_FALSE;
+      
+      nid = -1;
+      gllid = -1;
+      if (receiver_found) {
+        eid = ei + ej * c->mx;
+        
+        /* get element -> node map */
+        element = c->element;
+        elbasis = &element[c->npe*eid];
+        
+        // find closest //
+        sep2min = 1.0e32;
+        for (n=0; n<c->npe; n++) {
+          sep2  = (xr[2*r+0]-LA_c[2*elbasis[n]])*(xr[2*r+0]-LA_c[2*elbasis[n]]);
+          sep2 += (xr[2*r+1]-LA_c[2*elbasis[n]+1])*(xr[2*r+1]-LA_c[2*elbasis[n]+1]);
+          if (sep2 < sep2min) {
+            nid = elbasis[n];
+            gllid = n;
+            sep2min = sep2;
+          }
+        }
+      }
+      
+      /* check for duplicates */
+      count = 0;
+      if (receiver_found) {
+        count = 1;
+      }
+      ierr = MPI_Allreduce(&count,&recv_count,1,MPI_INT,MPI_SUM,PETSC_COMM_WORLD);CHKERRQ(ierr);
+      
+      if (recv_count == 0) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"A receiver was defined but no rank claimed it");
+      
+      if (recv_count > 1) {
+        /* resolve duplicates */
+        
+        rank = (int)c->rank;
+        if (!receiver_found) {
+          rank = (int)c->size;
+        }
+        ierr = MPI_Allreduce(&rank,&rank_min_g,1,MPI_INT,MPI_MIN,PETSC_COMM_WORLD);CHKERRQ(ierr);
+        if (rank == rank_min_g) {
+          PetscPrintf(PETSC_COMM_SELF,"[RecordUVA]  + Multiple ranks located receiver (%+1.4e,%+1.4e) - rank %d claiming ownership\n",xr[2*r+0],xr[2*r+1],rank_min_g);
+        }
+        
+        /* mark non-owning ranks as not claiming source */
+        if (rank != rank_min_g) {
+          receiver_found = PETSC_FALSE;
+        }
+      }
+
+      if (receiver_found) {
+        nid_list[r] = nid;
+        eid_list[r] = eid;
+        gll_list[r] = gllid;
+        nr_local++;
+      }
+    }
+    
+    fp = fopen(filename,"w");
+    if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
+    fprintf(fp,"# SpecFECtx meta data\n");
+    fprintf(fp,"#   mx %d : my %d : basis order %d\n",c->mx_g,c->my_g,c->basisorder);
+    fprintf(fp,"# Receiver meta data\n");
+    fprintf(fp,"#   + number receiver locations: %d\n",nr);
+    fprintf(fp,"#   + number receiver locations <local>: %d\n",nr_local);
+    fprintf(fp,"#   + takes displ/velo/accel from basis nearest to requested receiver location\n");
+    for (r=0; r<nr; r++) {
+      if (nid_list[r] == -1) { continue; }
+      fprintf(fp,"#   + receiver location [%d]: x,y %+1.8e %+1.8e\n",r,xr[2*r+0],xr[2*r+1]);
+      fprintf(fp,"#   +   mapped to nearest node --> %+1.8e %+1.8e\n",LA_c[2*nid_list[r]],LA_c[2*nid_list[r]+1]);
+    }
+
+    if (nr_local != 0) {
+      PetscInt count = 0;
+
+      fprintf(fp,"# Time series header <field>(<column index>)\n");
+      fprintf(fp,"#   time(1)\n");
+
+    
+      for (r=0; r<nr; r++) {
+        PetscInt offset;
+        
+        if (nid_list[r] == -1) { continue; }
+
+        offset = 1 + count*7; /* 1 is for time */
+        
+        fprintf(fp,"#     ux(%d) uy(%d) vx(%d) vy(%d) ax(%d) ay(%d) curl(v) (%d)-> station [%d]\n",offset+1,offset+2,offset+3,offset+4,offset+5,offset+6,offset+7,r);
+        count++;
+      }
+    } else {
+      fprintf(fp,"# <note> No receivers found on this sub-domain\n");
+      fprintf(fp,"# <note> This file will remain empty\n");
+    }
+
+    ierr = VecRestoreArrayRead(coor,&LA_c);CHKERRQ(ierr);
+    
+    fclose(fp);
+    fp = NULL;
+  }
+  
+  if (!beenhere) {
+    char metafname[PETSC_MAX_PATH_LEN];
+    FILE *fp_meta = NULL;
+    int *owned,*owned_g;
+    
+    ierr = PetscSNPrintf(metafname,PETSC_MAX_PATH_LEN-1,"closestqpsource-receiverCP-uva-%Dx%D-p%D.mpimeta",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
+    
+    ierr = PetscMalloc1(nr,&owned);CHKERRQ(ierr);
+    ierr = PetscMalloc1(nr,&owned_g);CHKERRQ(ierr);
+    for (r=0; r<nr; r++) {
+      owned[r] = -1;
+      if (nid_list[r] != -1) { owned[r] = (int)c->rank; }
+    }
+    ierr = MPI_Allreduce(owned,owned_g,nr,MPI_INT,MPI_MAX,PETSC_COMM_WORLD);CHKERRQ(ierr);
+    
+    if (c->rank == 0) {
+      fp_meta = fopen(metafname,"w");
+      if (!fp_meta) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",metafname);
+    
+      fprintf(fp_meta,"# SpecFECtx parallel/MPI meta data\n");
+      fprintf(fp_meta,"#   mx %d : my %d : basis order %d\n",c->mx_g,c->my_g,c->basisorder);
+      fprintf(fp_meta,"# Receiver meta data\n");
+      fprintf(fp_meta,"#   + number receiver locations: %d\n",nr);
+      for (r=0; r<nr; r++) {
+        fprintf(fp_meta,"#   + receiver [%d]: mapped to MPI rank %d\n",r,owned_g[r]);
+      }
+      
+      fclose(fp_meta);
+    }
+    
+    ierr = PetscFree(owned_g);CHKERRQ(ierr);
+    ierr = PetscFree(owned);CHKERRQ(ierr);
+  }
+  
+  beenhere = PETSC_TRUE;
+
+  ierr = DMGetCoordinatesLocal(c->dm,&coor);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(coor,&LA_c);CHKERRQ(ierr);
+  
+  ierr = DMGetLocalVector(c->dm,&lu);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(c->dm,&lv);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(c->dm,&la);CHKERRQ(ierr);
+  
+  ierr = DMGlobalToLocalBegin(c->dm,u,INSERT_VALUES,lu);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(c->dm,u,INSERT_VALUES,lu);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalBegin(c->dm,v,INSERT_VALUES,lv);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(c->dm,v,INSERT_VALUES,lv);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalBegin(c->dm,a,INSERT_VALUES,la);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(c->dm,a,INSERT_VALUES,la);CHKERRQ(ierr);
+  
+  ierr = VecGetArrayRead(lu,&LA_u);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(lv,&LA_v);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(la,&LA_a);CHKERRQ(ierr);
+  
+  if (nr_local != 0) {
+    fp = fopen(filename,"a");
+    if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
+  
+    fprintf(fp,"%1.4e",time);
+  
+    for (r=0; r<nr; r++) {
+      PetscInt eidx,gllidx;
+      PetscReal *elcoor,*elvelocity;
+      PetscReal dvxdy,dvydx,curl;
+      PetscReal *grad_N_xi[2];
+      PetscReal *grad_N_x[2];
+      
+      if (eid_list[r] == -1) { continue; }
+      
+      /* write the components of u,v,a */
+      fprintf(fp," %+1.8e %+1.8e %+1.8e %+1.8e %+1.8e %+1.8e",LA_u[2*nid_list[r]],LA_u[2*nid_list[r]+1],LA_v[2*nid_list[r]],LA_v[2*nid_list[r]+1],LA_a[2*nid_list[r]],LA_a[2*nid_list[r]+1]);
+      
+      /* compute and write the k^th component of the curl(v) */
+      eidx   = eid_list[r];
+      gllidx = gll_list[r];
+      
+      grad_N_xi[0] = c->dN_dxi[gllidx];
+      grad_N_xi[1] = c->dN_deta[gllidx];
+      
+      grad_N_x[0] = c->dN_dx[gllidx];
+      grad_N_x[1] = c->dN_dy[gllidx];
+      
+      elcoor = c->elbuf_field;
+      elvelocity = c->elbuf_field2;
+      
+      for (k=0; k<c->npe; k++) {
+        PetscInt basisid = c->element[c->npe*eidx + k];
+        
+        elcoor[2*k+0] = LA_c[2*basisid + 0];
+        elcoor[2*k+1] = LA_c[2*basisid + 1];
+        
+        elvelocity[2*k+0] = LA_v[2*basisid + 0];
+        elvelocity[2*k+1] = LA_v[2*basisid + 1];
+      }
+      
+      ElementEvaluateDerivatives_CellWiseConstant2d(1,c->npe,elcoor,c->npe_1d,&grad_N_xi[0],&grad_N_xi[1],&grad_N_x[0],&grad_N_x[1]);
+      
+      dvxdy = 0.0;
+      dvydx = 0.0;
+      for (k=0; k<c->npe; k++) {
+        PetscReal vx,vy;
+        
+        vx = elvelocity[2*k+0];
+        vy = elvelocity[2*k+1];
+        
+        dvxdy += grad_N_x[1][k] * vx;
+        dvydx += grad_N_x[0][k] * vy;
+      }
+      curl = dvydx - dvxdy;
+      fprintf(fp," %+1.8e",curl);
+    }
+    
+    fprintf(fp,"\n");
+
+    if (fp) {
+      fclose(fp);
+      fp = NULL;
+    }
+  }
+  
+  ierr = VecRestoreArrayRead(a,&LA_a);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(v,&LA_v);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(u,&LA_u);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(coor,&LA_c);CHKERRQ(ierr);
+
+  ierr = DMRestoreLocalVector(c->dm,&la);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(c->dm,&lv);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(c->dm,&lu);CHKERRQ(ierr);
+
+  
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode RecordUVA_MultipleStations_NearestGLL(SpecFECtx c,PetscReal time,PetscInt nr,PetscReal xr[],Vec u,Vec v,Vec a)
+{
+  PetscErrorCode ierr;
+  
+  //if (c->size == 1) {
+  //ierr = RecordUVA_MultipleStations_NearestGLL_SEQ(c,time,nr,xr,u,v,a);CHKERRQ(ierr);
+  //} else {
+  ierr = RecordUVA_MultipleStations_NearestGLL_MPI(c,time,nr,xr,u,v,a);CHKERRQ(ierr);
+  //}
+  PetscFunctionReturn(0);
+}
+
 PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSourceImplementationType itype,PetscReal coor[],PetscReal values[],SeismicSource *s)
 {
   SeismicSource src;
-  PetscReal gmin[2],gmax[2],cell_min[2];
+  PetscReal gmin[2],gmax[2],gmin_domain[2],gmax_domain[2],cell_min[2];
   PetscReal dx,dy,xi_source[2];
   PetscBool source_found;
   PetscInt eowner_source;
-  PetscMPIInt rank;
+  PetscMPIInt size,rank,rank_owner;
   PetscInt ii,jj;
+  int source_count,count,r,r_min_g;
   PetscErrorCode ierr;
   
   ierr = MPI_Comm_rank(PETSC_COMM_WORLD,&rank);CHKERRQ(ierr);
   /* locate cell containing source */
   ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
-  dx = (gmax[0] - gmin[0])/((PetscReal)c->mx);
-  dy = (gmax[1] - gmin[1])/((PetscReal)c->my);
+  dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
+  dy = (gmax[1] - gmin[1])/((PetscReal)c->my_g);
   
   if (coor[0] < gmin[0]) SETERRQ2(PETSC_COMM_SELF,PETSC_ERR_USER,"Source x-coordinate (%+1.4e) < min(domain).x (%+1.4e)",coor[0],gmin[0]);
   if (coor[1] < gmin[1]) SETERRQ2(PETSC_COMM_SELF,PETSC_ERR_USER,"Source y-coordinate (%+1.4e) < min(domain).y (%+1.4e)",coor[1],gmin[1]);
   if (coor[0] > gmax[0]) SETERRQ2(PETSC_COMM_SELF,PETSC_ERR_USER,"Source x-coordinate (%+1.4e) > max(domain).x (%+1.4e)",coor[0],gmax[0]);
   if (coor[1] > gmax[1]) SETERRQ2(PETSC_COMM_SELF,PETSC_ERR_USER,"Source y-coordinate (%+1.4e) > max(domain).y (%+1.4e)",coor[1],gmax[1]);
 
+  ierr = SpecFECtxGetLocalBoundingBox(c,gmin_domain,gmax_domain);CHKERRQ(ierr);
+  /*PetscPrintf(PETSC_COMM_SELF,"rank %d : x[%+1.4e,%+1.4e] - y[%+1.4e,%+1.4e]\n",c->rank,gmin_domain[0],gmax_domain[0],gmin_domain[1],gmax_domain[1]);*/
+  
   source_found = PETSC_TRUE;
   eowner_source = -1;
   ii = -1;
   jj = -1;
-  {
+  
+  if (coor[0] < gmin_domain[0]) source_found = PETSC_FALSE;
+  if (coor[1] < gmin_domain[1]) source_found = PETSC_FALSE;
+  if (coor[0] > gmax_domain[0]) source_found = PETSC_FALSE;
+  if (coor[1] > gmax_domain[1]) source_found = PETSC_FALSE;
+  
+  if (source_found != PETSC_FALSE) { /* skip if already determined point is outside of the sub-domain */
     
-    ii = (PetscInt)( ( coor[0] - gmin[0] )/dx );
-    jj = (PetscInt)( ( coor[1] - gmin[1] )/dy );
+    ii = (PetscInt)( ( coor[0] - gmin_domain[0] )/dx );
+    jj = (PetscInt)( ( coor[1] - gmin_domain[1] )/dy );
+    /*printf("  rank %d ii jj %d %d \n",c->rank,ii,jj);*/
     
     if (ii == c->mx) ii--;
     if (jj == c->my) jj--;
@@ -2339,24 +3040,54 @@ PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSou
     if (ii < 0) source_found = PETSC_FALSE;
     if (jj < 0) source_found = PETSC_FALSE;
     
-    if (ii > c->mx) source_found = PETSC_FALSE;
-    if (jj > c->my) source_found = PETSC_FALSE;
+    if (ii >= c->mx) source_found = PETSC_FALSE;
+    if (jj >= c->my) source_found = PETSC_FALSE;
     
     if (source_found) {
       eowner_source = ii + jj * c->mx;
     }
   }
   if (source_found) {
-    printf("source (%+1.4e,%+1.4e) --> element %d | rank %d\n",coor[0],coor[1],eowner_source,rank);
-  } else {
-    printf("source (%+1.4e,%+1.4e) --> not mapped to rank %d\n",coor[0],coor[1],rank);
+    PetscPrintf(PETSC_COMM_SELF,"[SeismicSource] source (%+1.4e,%+1.4e) --> element %d | rank %d\n",coor[0],coor[1],eowner_source,rank);
+  }
+  
+  /* check for duplicates */
+  count = 0;
+  if (source_found) {
+    count = 1;
+  }
+  ierr = MPI_Allreduce(&count,&source_count,1,MPI_INT,MPI_SUM,PETSC_COMM_WORLD);CHKERRQ(ierr);
+
+  if (source_count == 0) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"A source was defined but no rank claimed it");
+  
+  if (source_count > 1) {
+    /* resolve duplicates */
+
+    r = (int)rank;
+    if (!source_found) {
+      r = (int)c->size;
+    }
+    ierr = MPI_Allreduce(&r,&r_min_g,1,MPI_INT,MPI_MIN,PETSC_COMM_WORLD);CHKERRQ(ierr);
+    if ( r == r_min_g) {
+      PetscPrintf(PETSC_COMM_SELF,"[SeismicSource]  + Multiple ranks located source (%+1.4e,%+1.4e) - rank %d claiming ownership\n",coor[0],coor[1],r_min_g);
+      PetscPrintf(PETSC_COMM_SELF,"[SeismicSource]  + Multiple ranks located source **** WARNING: This may produce results which slightly differ from a sequential run. ****\n");
+      PetscPrintf(PETSC_COMM_SELF,"[SeismicSource]  + Multiple ranks located source **** WARNING: To remove solution variations, suggest you slightly shift the source location. ****\n");
+    }
+    
+    /* mark non-owning ranks as not claiming source */
+    if (r != r_min_g) {
+      source_found = PETSC_FALSE;
+    }
+  }
+  
+  if (!source_found) {
     *s = NULL;
     PetscFunctionReturn(0);
   }
   
   /* get local coordinates */
-  cell_min[0] = gmin[0] + ii * dx;
-  cell_min[1] = gmin[1] + jj * dy;
+  cell_min[0] = gmin_domain[0] + ii * dx;
+  cell_min[1] = gmin_domain[1] + jj * dy;
   
   xi_source[0] = 2.0 * (coor[0] - cell_min[0])/dx - 1.0;
   xi_source[1] = 2.0 * (coor[1] - cell_min[1])/dy - 1.0;
@@ -2391,8 +3122,14 @@ PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSou
     PetscInt nbasis;
     Vec coordinates;
     const PetscReal *LA_coor;
+    PetscBool use_nearest_internal_gll = PETSC_TRUE;
     
-    ierr = DMGetCoordinates(c->dm,&coordinates);CHKERRQ(ierr);
+    ierr = PetscOptionsGetBool(NULL,NULL,"-use_nearest_internal_gll",&use_nearest_internal_gll,NULL);CHKERRQ(ierr);
+    if ((c->basisorder == 1) && use_nearest_internal_gll) {
+      SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_USER,"Cannot use basis degree = 1 and approximate the source location based on nearest cell interior GLL point. You must provide the command line option -use_nearest_internal_gll false");
+    }
+    
+    ierr = DMGetCoordinatesLocal(c->dm,&coordinates);CHKERRQ(ierr);
     ierr = VecGetArrayRead(coordinates,&LA_coor);CHKERRQ(ierr);
     
     elcoords = c->elbuf_coor;
@@ -2411,24 +3148,40 @@ PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSou
       elcoords[2*i+1] = LA_coor[2*nidx+1];
     }
     
-    for (nj=1; nj<c->npe_1d-1; nj++) {
-      for (ni=1; ni<c->npe_1d-1; ni++) {
-        nid = ni + nj * c->npe_1d;
-        
-        sep2 = (elcoords[2*nid]-coor[0])*(elcoords[2*nid]-coor[0]) + (elcoords[2*nid+1]-coor[1])*(elcoords[2*nid+1]-coor[1]);
-        if (sep2 < sep2_min) {
-          sep2_min = sep2;
-          min_qp = nid;
-          _ni = ni;
-          _nj = nj;
+    if (use_nearest_internal_gll) {
+      for (nj=1; nj<c->npe_1d-1; nj++) {
+        for (ni=1; ni<c->npe_1d-1; ni++) {
+          nid = ni + nj * c->npe_1d;
+          
+          sep2 = (elcoords[2*nid]-coor[0])*(elcoords[2*nid]-coor[0]) + (elcoords[2*nid+1]-coor[1])*(elcoords[2*nid+1]-coor[1]);
+          if (sep2 < sep2_min) {
+            sep2_min = sep2;
+            min_qp = nid;
+            _ni = ni;
+            _nj = nj;
+          }
+        }
+      }
+    } else {
+      for (nj=0; nj<c->npe_1d; nj++) {
+        for (ni=0; ni<c->npe_1d; ni++) {
+          nid = ni + nj * c->npe_1d;
+          
+          sep2 = (elcoords[2*nid]-coor[0])*(elcoords[2*nid]-coor[0]) + (elcoords[2*nid+1]-coor[1])*(elcoords[2*nid+1]-coor[1]);
+          if (sep2 < sep2_min) {
+            sep2_min = sep2;
+            min_qp = nid;
+            _ni = ni;
+            _nj = nj;
+          }
         }
       }
     }
     ierr = VecRestoreArrayRead(coordinates,&LA_coor);CHKERRQ(ierr);
     closest_qp = min_qp;
     src->closest_gll = closest_qp;
-    printf("source --> closest_gll %d xi: (%+1.4e,%+1.4e) [%d,%d] \n",closest_qp,c->xi1d[_ni],c->xi1d[_nj],_ni,_nj);
-    printf("source --> closest_gll %d x:  (%+1.4e,%+1.4e)\n",closest_qp,elcoords[2*min_qp],elcoords[2*min_qp+1]);
+    PetscPrintf(PETSC_COMM_SELF,"[SeismicSource] source --> closest_gll %d xi: (%+1.4e,%+1.4e) [%d,%d] \n",closest_qp,c->xi1d[_ni],c->xi1d[_nj],_ni,_nj);
+    PetscPrintf(PETSC_COMM_SELF,"[SeismicSource] source --> closest_gll %d x:  (%+1.4e,%+1.4e)\n",closest_qp,elcoords[2*min_qp],elcoords[2*min_qp+1]);
   }
   
   
@@ -2492,6 +3245,8 @@ PetscErrorCode SeismicSourceSetup(SeismicSource src)
 {
   PetscErrorCode ierr;
   
+  if (!src) PetscFunctionReturn(0);
+  
   if (src->issetup) PetscFunctionReturn(0);
   if (src->setup) {
     ierr = src->setup(src);CHKERRQ(ierr);
@@ -2527,10 +3282,12 @@ PetscErrorCode SeismicSourceAddValues_Pointwise(SeismicSource s,PetscReal stf,Ve
   for (k=0; k<2*pw->nbasis; k++) {
     pw->buffer[k] = stf * pw->element_values[k];
   }
-  //for (k=0; k<pw->nbasis; k++) {
-  //  printf("buffer[%d] %+1.4e %+1.4e\n",k,pw->buffer[2*k],pw->buffer[2*k+1]);
-  //}
-  ierr = VecSetValues(f,pw->nbasis*2,pw->element_indices,pw->buffer,ADD_VALUES);CHKERRQ(ierr);
+  /*
+  for (k=0; k<pw->nbasis; k++) {
+    printf("buffer[%4d] %+1.12e %+1.12e\n",k,pw->buffer[2*k],pw->buffer[2*k+1]);
+  }
+  */
+  ierr = VecSetValuesLocal(f,pw->nbasis*2,pw->element_indices,pw->buffer,ADD_VALUES);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -2622,7 +3379,7 @@ PetscErrorCode SeismicSourceSetup_Moment_Pointwise(SeismicSource s)
   ierr = SeismicSourceSetup_Pointwise(s,&ctx);CHKERRQ(ierr);
   
   /* get element coordinates */
-  ierr = DMGetCoordinates(s->sfem->dm,&coordinates);CHKERRQ(ierr);
+  ierr = DMGetCoordinatesLocal(s->sfem->dm,&coordinates);CHKERRQ(ierr);
   ierr = VecGetArrayRead(coordinates,&LA_coor);CHKERRQ(ierr);
   elcoords = s->sfem->elbuf_coor;
   
@@ -2717,6 +3474,8 @@ PetscErrorCode SeismicSourceEvaluate(PetscReal time,PetscInt nsources,SeismicSou
   
   ierr = VecZeroEntries(f);CHKERRQ(ierr);
   for (p=0; p<nsources; p++) {
+    if (!s[p]) continue;
+    
     if (!s[p]->issetup) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_USER,"Seismic source not setup. Must call SeismicSourceSetup()");
     
     if (!stf) {
@@ -2829,6 +3588,238 @@ PetscErrorCode SeismicSTFCreate_Gaussian(PetscReal t0,PetscReal omega,PetscReal 
   PetscFunctionReturn(0);
 }
 
+/* Triangle regularized Yoffe source-time function implementation */
+/*
+ A Kinematic Source-Time Function Compatible with Earthquake Dynamics
+ by Elisa Tinti, Eiichi Fukuyama, Alessio Piatanesi, and Massimo Cocco
+ Bulletin of the Seismological Society of America, 
+ Vol. 95, No. 4, pp. 1211–1223, August 2005, doi: 10.1785/0120040177
+ 
+ Mistakes in the paper:
+ - Last conditional in equations A13, A14 should be t >= tau_R + 2 tau_S
+*/
+typedef struct {
+  PetscReal K;
+  PetscReal D_max,tau_S,tau_R;
+} SeismicSTF_TriRegYoffe;
+
+/* methods for the constants */
+static PetscErrorCode reg_yoffe_compute_C1(SeismicSTF_TriRegYoffe *ctx,PetscReal time,PetscReal *C1)
+{
+  PetscReal t1,t2,t3,t4,t5;
+  PetscReal tau_R2;
+  
+  tau_R2 = ctx->tau_R*ctx->tau_R;
+  t1 = 0.5 * time + 0.25 * ctx->tau_R;
+  t2 = time * (ctx->tau_R - time);
+  t3 = (time - ctx->tau_R) * ctx->tau_R;
+  t4 = time/ctx->tau_R;
+  if (PetscAbsReal(time) < 0.0) {
+    t5 = 1.0e12;
+  } else {
+    t5 = (ctx->tau_R - time)/time;
+  }
+  
+  if (t2 < 0.0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"t2 negative");
+  if (t4 < 0.0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"t4 negative");
+  if (t5 < 0.0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"t5 negative");
+
+  *C1 =  t1 * PetscSqrtReal(t2) + t3 * PetscAsinReal(PetscSqrtReal(t4)) - 0.75 * tau_R2 * PetscAtanReal(PetscSqrtReal(t5));
+  PetscFunctionReturn(0);
+}
+
+static PetscErrorCode reg_yoffe_compute_C3(SeismicSTF_TriRegYoffe *ctx,PetscReal time,PetscReal *C3)
+{
+  PetscReal t1,t2,t3,t4,t5;
+  PetscReal tau_R2;
+  
+  tau_R2 = ctx->tau_R*ctx->tau_R;
+  t1 = ctx->tau_S - time - 0.5 * ctx->tau_R;
+  t2 = (time - ctx->tau_S) * (ctx->tau_R - time + ctx->tau_S);
+  t3 = ctx->tau_R * (2.0 * ctx->tau_R - 2.0 * time + 2.0 * ctx->tau_S);
+  t4 = (time - ctx->tau_S) / ctx->tau_R;
+  if (PetscAbsReal(time - ctx->tau_S) < 0.0) {
+    t5 = 1.0e12;
+  } else {
+    t5 = (ctx->tau_R - time + ctx->tau_S)/(time - ctx->tau_S);
+  }
+  
+  if (t2 < 0.0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"t2 negative");
+  if (t4 < 0.0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"t4 negative");
+  if (t5 < 0.0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"t5 negative");
+  
+  *C3 =  t1 * PetscSqrtReal(t2) + t3 * PetscAsinReal(PetscSqrtReal(t4)) + 1.5 * tau_R2 * PetscAtanReal(PetscSqrtReal(t5));
+  PetscFunctionReturn(0);
+}
+
+static PetscErrorCode reg_yoffe_compute_C4(SeismicSTF_TriRegYoffe *ctx,PetscReal time,PetscReal *C4)
+{
+  PetscReal t1,t2,t3,t4,t5;
+  PetscReal tau_R2;
+  
+  tau_R2 = ctx->tau_R*ctx->tau_R;
+  t1 = -ctx->tau_S + 0.5 * time + 0.25 * ctx->tau_R;
+  t2 = (time - 2.0 * ctx->tau_S) * (ctx->tau_R - time + 2.0 * ctx->tau_S);
+  t3 = ctx->tau_R * (-ctx->tau_R + time - 2.0 * ctx->tau_S);
+  t4 = (time - 2.0 * ctx->tau_S) / ctx->tau_R;
+
+  if (PetscAbsReal(time - 2.0 * ctx->tau_S) < 0.0) {
+    t5 = 1.0e12;
+  } else {
+    t5 = (ctx->tau_R - time + 2.0 * ctx->tau_S)/(time - 2.0 * ctx->tau_S);
+  }
+
+  if (t2 < 0.0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"t2 negative");
+  if (t4 < 0.0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"t4 negative");
+  if (t5 < 0.0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"t5 negative");
+
+  *C4 =  t1 * PetscSqrtReal(t2) + t3 * PetscAsinReal(PetscSqrtReal(t4)) - 0.75 * tau_R2 * PetscAtanReal(PetscSqrtReal(t5));
+  PetscFunctionReturn(0);
+}
+
+
+/* For tau_R > 2 tau_S */
+PetscErrorCode SeismicSTFEvaluate_TriRegYoffe_mode1(SeismicSTF stf,PetscReal time,PetscReal *psi)
+{
+  SeismicSTF_TriRegYoffe *ctx = (SeismicSTF_TriRegYoffe*)stf->data;
+  PetscReal C1,C2,C3,C4,C5,C6,tau_R2,phi;
+  PetscErrorCode ierr;
+  
+  /* the most common case */
+  if (time >= (ctx->tau_R + 2.0*ctx->tau_S)) {
+    *psi = 0.0;
+    PetscFunctionReturn(0);
+  }
+  
+  C1 = C2 = C3 = C4 = C5 = C6 = 0.0;
+  tau_R2 = ctx->tau_R*ctx->tau_R;
+  
+  if ( (time >= 0.0) && (time < ctx->tau_S) ) {
+    ierr = reg_yoffe_compute_C1(ctx,time,&C1);CHKERRQ(ierr);
+    C2 = (3.0/8.0) * PETSC_PI * tau_R2;
+
+    phi = C1 + C2;
+  } else if ( (time >= ctx->tau_S) && (time < 2.0 * ctx->tau_S) ) {
+    ierr = reg_yoffe_compute_C1(ctx,time,&C1);CHKERRQ(ierr);
+    C2 = (3.0/8.0) * PETSC_PI * tau_R2;
+    ierr = reg_yoffe_compute_C3(ctx,time,&C3);CHKERRQ(ierr);
+
+    phi = C1 - C2 + C3;
+  } else if ( (time >= 2.0* ctx->tau_S) && (time < ctx->tau_R) ) {
+    ierr = reg_yoffe_compute_C1(ctx,time,&C1);CHKERRQ(ierr);
+    ierr = reg_yoffe_compute_C3(ctx,time,&C3);CHKERRQ(ierr);
+    ierr = reg_yoffe_compute_C4(ctx,time,&C4);CHKERRQ(ierr);
+  
+    phi = C1 + C3 + C4;
+  } else if ( (time >= ctx->tau_R) && (time < (ctx->tau_R + ctx->tau_S)) ) {
+    ierr = reg_yoffe_compute_C3(ctx,time,&C3);CHKERRQ(ierr);
+    ierr = reg_yoffe_compute_C4(ctx,time,&C4);CHKERRQ(ierr);
+    C5 = 0.5 * PETSC_PI * ctx->tau_R * (time - ctx->tau_R);
+    
+    phi = C5 + C3 + C4;
+  } else if ( (time >= (ctx->tau_R + ctx->tau_S)) && (time < (ctx->tau_R + 2.0 * ctx->tau_S)) ) {
+    ierr = reg_yoffe_compute_C4(ctx,time,&C4);CHKERRQ(ierr);
+    C6 = 0.5 * PETSC_PI * ctx->tau_R * (2.0 * ctx->tau_S - time + ctx->tau_R);
+
+    phi = C4 + C6;
+  } else { /* time < 0.0 */
+    phi = 0.0;
+  }
+  (*psi) = ctx->K * phi;
+  
+  PetscFunctionReturn(0);
+}
+
+/* For tau_S < tau_R < 2 tau_S */
+PetscErrorCode SeismicSTFEvaluate_TriRegYoffe_mode2(SeismicSTF stf,PetscReal time,PetscReal *psi)
+{
+  SeismicSTF_TriRegYoffe *ctx = (SeismicSTF_TriRegYoffe*)stf->data;
+  PetscReal C1,C2,C3,C4,C5,C6,tau_R2,phi;
+  PetscErrorCode ierr;
+  
+  /* the most common case */
+  if (time >= (ctx->tau_R + 2.0*ctx->tau_S)) {
+    *psi = 0.0;
+    PetscFunctionReturn(0);
+  }
+
+  C1 = C2 = C3 = C4 = C5 = C6 = 0.0;
+  tau_R2 = ctx->tau_R*ctx->tau_R;
+
+  if ( (time >= 0.0) && (time < ctx->tau_S) ) {
+    ierr = reg_yoffe_compute_C1(ctx,time,&C1);CHKERRQ(ierr);
+    C2 = (3.0/8.0) * PETSC_PI * tau_R2;
+    
+    phi = C1 + C2;
+  } else if ( (time >= ctx->tau_S) && (time < ctx->tau_R) ) {
+    ierr = reg_yoffe_compute_C1(ctx,time,&C1);CHKERRQ(ierr);
+    C2 = (3.0/8.0) * PETSC_PI * tau_R2;
+    ierr = reg_yoffe_compute_C3(ctx,time,&C3);CHKERRQ(ierr);
+    
+    phi = C1 - C2 + C3;
+  } else if ( (time >= ctx->tau_R) && (time < 2.0 * ctx->tau_S) ) {
+    C2 = (3.0/8.0) * PETSC_PI * tau_R2;
+    ierr = reg_yoffe_compute_C3(ctx,time,&C3);CHKERRQ(ierr);
+    C5 = 0.5 * PETSC_PI * ctx->tau_R * (time - ctx->tau_R);
+    
+    phi = C5 + C3 - C2;
+  } else if ( (time >= 2.0 * ctx->tau_S) && (time < (ctx->tau_R + ctx->tau_S)) ) {
+    ierr = reg_yoffe_compute_C3(ctx,time,&C3);CHKERRQ(ierr);
+    ierr = reg_yoffe_compute_C4(ctx,time,&C4);CHKERRQ(ierr);
+    C5 = 0.5 * PETSC_PI * ctx->tau_R * (time - ctx->tau_R);
+    
+    phi = C5 + C3 + C4;
+  } else if ( (time >= (ctx->tau_R + ctx->tau_S)) && (time < (ctx->tau_R + 2.0 * ctx->tau_S)) ) {
+    ierr = reg_yoffe_compute_C4(ctx,time,&C4);CHKERRQ(ierr);
+    C6 = 0.5 * PETSC_PI * ctx->tau_R * (2.0 * ctx->tau_S - time + ctx->tau_R);
+    
+    phi = C4 + C6;
+  } else { /* time < 0.0 */
+    phi = 0.0;
+  }
+  (*psi) = ctx->K * phi;
+  
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SeismicSTFDestroy_Default(SeismicSTF stf)
+{
+  PetscErrorCode ierr;
+  
+  ierr = PetscFree(stf->data);CHKERRQ(ierr);
+  stf->data = NULL;
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SeismicSTFCreate_TriRegYoffe(PetscReal tau_S,PetscReal tau_R,PetscReal D_max,SeismicSTF *s)
+{
+  PetscErrorCode ierr;
+  SeismicSTF stf;
+  SeismicSTF_TriRegYoffe *yoffe;
+  
+  ierr = SeismicSTFCreate("reg_yoffe",&stf);CHKERRQ(ierr);
+  ierr = PetscMalloc1(1,&yoffe);CHKERRQ(ierr);
+  yoffe->tau_S    = tau_S;
+  yoffe->tau_R = tau_R;
+  yoffe->D_max   = D_max;
+
+  yoffe->K = 2.0 / (PETSC_PI * tau_R * tau_S*tau_S);
+
+  
+  stf->data = (void*)yoffe;
+
+  if (tau_R > 2.0 * tau_S) {
+    stf->evaluate = SeismicSTFEvaluate_TriRegYoffe_mode1;
+  } else if ((tau_S < tau_R) && (tau_R < 2.0 * tau_S)) {
+    stf->evaluate = SeismicSTFEvaluate_TriRegYoffe_mode2;
+  } else SETERRQ2(PETSC_COMM_WORLD,PETSC_ERR_USER,"Invalid values for tau_S (%+1.4e) and tau_R(%+1.4e) provided",tau_S,tau_R);
+    
+  stf->destroy = SeismicSTFDestroy_Default;
+  
+  *s = stf;
+  PetscFunctionReturn(0);
+}
+
 PetscErrorCode specfem(PetscInt mx,PetscInt my)
 {
   PetscErrorCode ierr;
@@ -2840,6 +3831,7 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
   PetscReal stf_exp_T;
   
   ierr = SpecFECtxCreate(&ctx);CHKERRQ(ierr);
+  if (ctx->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   p = 2;
   ierr = PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);CHKERRQ(ierr);
   ierr = SpecFECtxCreateMesh(ctx,2,mx,my,PETSC_DECIDE,p,2);CHKERRQ(ierr);
@@ -2853,15 +3845,12 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
   
   ierr = SpecFECtxSetConstantMaterialProperties_Velocity(ctx,4000.0,2000.0,2600.0);CHKERRQ(ierr); // vp,vs,rho
   
-  ierr = DMDASetFieldName(ctx->dm,0,"_x");CHKERRQ(ierr);
-  ierr = DMDASetFieldName(ctx->dm,1,"_y");CHKERRQ(ierr);
-  
-  DMCreateGlobalVector(ctx->dm,&u); PetscObjectSetName((PetscObject)u,"disp");
-  DMCreateGlobalVector(ctx->dm,&v); PetscObjectSetName((PetscObject)v,"velo");
-  DMCreateGlobalVector(ctx->dm,&a); PetscObjectSetName((PetscObject)a,"accl");
-  DMCreateGlobalVector(ctx->dm,&f);
-  DMCreateGlobalVector(ctx->dm,&g);
-  DMCreateGlobalVector(ctx->dm,&Md);
+  ierr = DMCreateGlobalVector(ctx->dm,&u);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)u,"disp");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&v);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)v,"velo");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&a);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)a,"accl");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&f);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)f,"f");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&g);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)g,"g");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&Md);CHKERRQ(ierr);
   
   ierr = VecZeroEntries(u);CHKERRQ(ierr);
   
@@ -2932,7 +3921,7 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
       
       // moment-time history
       arg = time / stf_exp_T;
-      stf = 1.0 - (1.0 + arg) * exp(-arg);
+      stf = 1.0 - (1.0 + arg) * PetscExpReal(-arg);
     }
     //
     
@@ -2963,7 +3952,7 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
     if (k%of == 0) {
       char name[PETSC_MAX_PATH_LEN];
       
-      PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4d.vts",k);
+      ierr = PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4D.vts",k);CHKERRQ(ierr);
       ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
       ierr = VecView(u,viewer);CHKERRQ(ierr);
       ierr = VecView(v,viewer);CHKERRQ(ierr);
@@ -2979,7 +3968,7 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
   {
     char name[PETSC_MAX_PATH_LEN];
     
-    PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4d.vts",k);
+    ierr = PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4D.vts",k);CHKERRQ(ierr);
     ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
     ierr = VecView(u,viewer);CHKERRQ(ierr);
     ierr = VecView(v,viewer);CHKERRQ(ierr);
@@ -3000,10 +3989,10 @@ PetscErrorCode specfem(PetscInt mx,PetscInt my)
 PetscErrorCode EvaluateRickerWavelet(PetscReal time,PetscReal t0,PetscReal freq,PetscReal amp,PetscReal *psi)
 {
   PetscReal arg,arg2,a,b;
-  arg = M_PI * freq * (time-t0);
+  arg = PETSC_PI * freq * (time-t0);
   arg2 = arg * arg;
   a = 1.0 - 2.0 * arg2;
-  b = exp(-arg2);
+  b = PetscExpReal(-arg2);
   *psi = amp * a * b;
   PetscFunctionReturn(0);
 }
@@ -3019,6 +4008,7 @@ PetscErrorCode specfem_ex2(PetscInt mx,PetscInt my)
   PetscReal stf_exp_T;
   
   ierr = SpecFECtxCreate(&ctx);CHKERRQ(ierr);
+  if (ctx->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   p = 2;
   ierr = PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);CHKERRQ(ierr);
   ierr = SpecFECtxCreateMesh(ctx,2,mx,my,PETSC_DECIDE,p,2);CHKERRQ(ierr);
@@ -3032,15 +4022,12 @@ PetscErrorCode specfem_ex2(PetscInt mx,PetscInt my)
   
   ierr = SpecFECtxSetConstantMaterialProperties_Velocity(ctx,3200.0,1847.5,2000.0);CHKERRQ(ierr); // vp,vs,rho
   
-  ierr = DMDASetFieldName(ctx->dm,0,"_x");CHKERRQ(ierr);
-  ierr = DMDASetFieldName(ctx->dm,1,"_y");CHKERRQ(ierr);
-  
-  DMCreateGlobalVector(ctx->dm,&u); PetscObjectSetName((PetscObject)u,"disp");
-  DMCreateGlobalVector(ctx->dm,&v); PetscObjectSetName((PetscObject)v,"velo");
-  DMCreateGlobalVector(ctx->dm,&a); PetscObjectSetName((PetscObject)a,"accl");
-  DMCreateGlobalVector(ctx->dm,&f); PetscObjectSetName((PetscObject)f,"f");
-  DMCreateGlobalVector(ctx->dm,&g); PetscObjectSetName((PetscObject)g,"g");
-  DMCreateGlobalVector(ctx->dm,&Md);
+  ierr = DMCreateGlobalVector(ctx->dm,&u);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)u,"disp");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&v);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)v,"velo");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&a);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)a,"accl");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&f);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)f,"f");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&g);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)g,"g");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&Md);CHKERRQ(ierr);
   
   ierr = VecZeroEntries(u);CHKERRQ(ierr);
   
@@ -3107,7 +4094,7 @@ PetscErrorCode specfem_ex2(PetscInt mx,PetscInt my)
       
       // moment-time history
       arg = time / stf_exp_T;
-      stf = 1.0 - (1.0 + arg) * exp(-arg);
+      stf = 1.0 - (1.0 + arg) * PetscExpReal(-arg);
     }
     //stf = time;
     printf("STF(%1.4e) = %+1.4e\n",time,stf);
@@ -3139,7 +4126,7 @@ PetscErrorCode specfem_ex2(PetscInt mx,PetscInt my)
     if (k%of == 0) {
       char name[PETSC_MAX_PATH_LEN];
       
-      PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4d.vts",k);
+      ierr = PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4D.vts",k);CHKERRQ(ierr);
       ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
       ierr = VecView(u,viewer);CHKERRQ(ierr);
       ierr = VecView(v,viewer);CHKERRQ(ierr);
@@ -3155,7 +4142,7 @@ PetscErrorCode specfem_ex2(PetscInt mx,PetscInt my)
   {
     char name[PETSC_MAX_PATH_LEN];
     
-    PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4d.vts",k);
+    ierr = PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4D.vts",k);CHKERRQ(ierr);
     ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
     ierr = VecView(u,viewer);CHKERRQ(ierr);
     ierr = VecView(v,viewer);CHKERRQ(ierr);
@@ -3184,6 +4171,7 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
   PetscReal stf_exp_T;
   
   ierr = SpecFECtxCreate(&ctx);CHKERRQ(ierr);
+  if (ctx->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   p = 2;
   ierr = PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);CHKERRQ(ierr);
   ierr = SpecFECtxCreateMesh(ctx,2,mx,my,PETSC_DECIDE,p,2);CHKERRQ(ierr);
@@ -3197,15 +4185,12 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
   
   ierr = SpecFECtxSetConstantMaterialProperties_Velocity(ctx,4746.3670317412243 ,2740.2554625435928, 1000.0);CHKERRQ(ierr); // vp,vs,rho
   
-  ierr = DMDASetFieldName(ctx->dm,0,"_x");CHKERRQ(ierr);
-  ierr = DMDASetFieldName(ctx->dm,1,"_y");CHKERRQ(ierr);
-  
-  DMCreateGlobalVector(ctx->dm,&u); PetscObjectSetName((PetscObject)u,"disp");
-  DMCreateGlobalVector(ctx->dm,&v); PetscObjectSetName((PetscObject)v,"velo");
-  DMCreateGlobalVector(ctx->dm,&a); PetscObjectSetName((PetscObject)a,"accl");
-  DMCreateGlobalVector(ctx->dm,&f); PetscObjectSetName((PetscObject)f,"f");
-  DMCreateGlobalVector(ctx->dm,&g); PetscObjectSetName((PetscObject)g,"g");
-  DMCreateGlobalVector(ctx->dm,&Md);
+  ierr = DMCreateGlobalVector(ctx->dm,&u);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)u,"disp");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&v);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)v,"velo");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&a);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)a,"accl");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&f);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)f,"f");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&g);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)g,"g");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&Md);CHKERRQ(ierr);
   
   ierr = VecZeroEntries(u);CHKERRQ(ierr);
   
@@ -3278,7 +4263,7 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
       
       // moment-time history
       //arg = time / stf_exp_T;
-      //stf = 1.0 - (1.0 + arg) * exp(-arg);
+      //stf = 1.0 - (1.0 + arg) * PetscExpReal(-arg);
     }
     //stf = time;
     
@@ -3316,7 +4301,7 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
     if (k%of == 0) {
       char name[PETSC_MAX_PATH_LEN];
       
-      PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4d.vts",k);
+      ierr = PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4D.vts",k);CHKERRQ(ierr);
       ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
       ierr = VecView(u,viewer);CHKERRQ(ierr);
       ierr = VecView(v,viewer);CHKERRQ(ierr);
@@ -3344,7 +4329,7 @@ PetscErrorCode specfem_gare6(PetscInt mx,PetscInt my)
   {
     char name[PETSC_MAX_PATH_LEN];
     
-    PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4d.vts",k);
+    ierr = PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4D.vts",k);CHKERRQ(ierr);
     ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
     ierr = VecView(u,viewer);CHKERRQ(ierr);
     ierr = VecView(v,viewer);CHKERRQ(ierr);
@@ -3374,6 +4359,7 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
   SeismicSTF stf;
   
   ierr = SpecFECtxCreate(&ctx);CHKERRQ(ierr);
+  if (ctx->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
   p = 2;
   ierr = PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);CHKERRQ(ierr);
   ierr = SpecFECtxCreateMesh(ctx,2,mx,my,PETSC_DECIDE,p,2);CHKERRQ(ierr);
@@ -3392,15 +4378,12 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
   
   ierr = SpecFECtxSetConstantMaterialProperties_Velocity(ctx,4746.3670317412243 ,2740.2554625435928, 1000.0);CHKERRQ(ierr); // vp,vs,rho
   
-  ierr = DMDASetFieldName(ctx->dm,0,"_x");CHKERRQ(ierr);
-  ierr = DMDASetFieldName(ctx->dm,1,"_y");CHKERRQ(ierr);
-  
-  DMCreateGlobalVector(ctx->dm,&u); PetscObjectSetName((PetscObject)u,"disp");
-  DMCreateGlobalVector(ctx->dm,&v); PetscObjectSetName((PetscObject)v,"velo");
-  DMCreateGlobalVector(ctx->dm,&a); PetscObjectSetName((PetscObject)a,"accl");
-  DMCreateGlobalVector(ctx->dm,&f); PetscObjectSetName((PetscObject)f,"f");
-  DMCreateGlobalVector(ctx->dm,&g); PetscObjectSetName((PetscObject)g,"g");
-  DMCreateGlobalVector(ctx->dm,&Md);
+  ierr = DMCreateGlobalVector(ctx->dm,&u);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)u,"disp");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&v);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)v,"velo");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&a);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)a,"accl");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&f);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)f,"f");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&g);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)g,"g");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&Md);CHKERRQ(ierr);
   
   ierr = VecZeroEntries(u);CHKERRQ(ierr);
   
@@ -3517,7 +4500,7 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
     if (k%of == 0) {
       char name[PETSC_MAX_PATH_LEN];
       
-      PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4d.vts",k);
+      ierr = PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4D.vts",k);CHKERRQ(ierr);
       ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
       ierr = VecView(u,viewer);CHKERRQ(ierr);
       ierr = VecView(v,viewer);CHKERRQ(ierr);
@@ -3544,7 +4527,7 @@ PetscErrorCode specfem_gare6_ex2(PetscInt mx,PetscInt my)
   {
     char name[PETSC_MAX_PATH_LEN];
     
-    PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4d.vts",k);
+    ierr = PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4D.vts",k);CHKERRQ(ierr);
     ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
     ierr = VecView(u,viewer);CHKERRQ(ierr);
     ierr = VecView(v,viewer);CHKERRQ(ierr);
@@ -3571,13 +4554,19 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   PetscViewer viewer;
   Vec u,v,a,f,g,Md;
   PetscReal time,dt,time_max;
-  PetscBool psource=PETSC_TRUE,ssource=PETSC_FALSE;
   PetscInt s,nsources;
   SeismicSource *src;
   SeismicSTF *stf;
   PetscInt nrecv;
   PetscReal *xr_list;
+  PetscBool dump_ic_src_vts = PETSC_FALSE;
+  PetscBool ignore_receiver_output = PETSC_FALSE;
+  PetscReal nrm,max,min;
+  char vts_fname[PETSC_MAX_PATH_LEN];
   
+  
+  ierr = PetscOptionsGetBool(NULL,NULL,"-dump_ic_src",&dump_ic_src_vts,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-ignore_receiver_output",&ignore_receiver_output,NULL);CHKERRQ(ierr);
   
   /*
     Create the structured mesh for the spectral element method.
@@ -3588,7 +4577,7 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   ierr = PetscOptionsGetInt(NULL,NULL,"-border",&p,NULL);CHKERRQ(ierr);
   ierr = SpecFECtxCreateMesh(ctx,2,mx,my,PETSC_DECIDE,p,2);CHKERRQ(ierr);
 
-  /* 
+  /*
    Define your domain by shifting and scaling the default [0,1]^2 domain
   */
   {
@@ -3602,7 +4591,7 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
     
     ierr = SpecFECtxScaleMeshCoords(ctx,scale,shift);CHKERRQ(ierr);
   }
-  
+
   /*
    Specify the material properties for the domain.
    This function sets constant material properties in every cell.
@@ -3610,24 +4599,23 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   */
   ierr = SpecFECtxSetConstantMaterialProperties_Velocity(ctx,4746.3670317412243 ,2740.2554625435928, 1000.0);CHKERRQ(ierr); // vp,vs,rho
   
-  ierr = DMDASetFieldName(ctx->dm,0,"_x");CHKERRQ(ierr);
-  ierr = DMDASetFieldName(ctx->dm,1,"_y");CHKERRQ(ierr);
-  
-  DMCreateGlobalVector(ctx->dm,&u); PetscObjectSetName((PetscObject)u,"disp");
-  DMCreateGlobalVector(ctx->dm,&v); PetscObjectSetName((PetscObject)v,"velo");
-  DMCreateGlobalVector(ctx->dm,&a); PetscObjectSetName((PetscObject)a,"accl");
-  DMCreateGlobalVector(ctx->dm,&f); PetscObjectSetName((PetscObject)f,"f");
-  DMCreateGlobalVector(ctx->dm,&g); PetscObjectSetName((PetscObject)g,"g");
-  DMCreateGlobalVector(ctx->dm,&Md);
+  ierr = DMCreateGlobalVector(ctx->dm,&u);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)u,"disp");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&v);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)v,"velo");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&a);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)a,"accl");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&f);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)f,"f");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&g);CHKERRQ(ierr); ierr = PetscObjectSetName((PetscObject)g,"g");CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(ctx->dm,&Md);CHKERRQ(ierr);
   
   ierr = VecZeroEntries(u);CHKERRQ(ierr);
   
   /*
    Write out the mesh and intial values for the displacement, velocity and acceleration (u,v,a)
   */
-  ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,"uva.vts",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
-  ierr = VecView(u,viewer);CHKERRQ(ierr);
-  ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+  if (dump_ic_src_vts) {
+    ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,"uva.vts",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
+    ierr = VecView(u,viewer);CHKERRQ(ierr);
+    ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+  }
   
   ierr = AssembleBilinearForm_Mass2d(ctx,Md);CHKERRQ(ierr);
   
@@ -3635,11 +4623,14 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   
   nsources = 2;
   ierr = PetscMalloc1(nsources,&src);CHKERRQ(ierr);
+  for (s=0; s<nsources; s++) {
+    src[s] = NULL;
+  }
   
   /* configure source 1 */
   {
     PetscReal moment[] = { 0.0, 0.0, 0.0, 0.0 }; /* initialize moment tensor to 0 */
-    PetscReal source_coor[] = { 0.0, 100.0 }; /* define source location */
+    PetscReal source_coor[] = { 0.1, 100.1 }; /* define source location */
     PetscReal M;
     
     M = 1000.0; /* gar6more input usings M/rho = 1 */
@@ -3654,7 +4645,7 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   /* configure source 2 */
   {
     PetscReal moment[] = { 0.0, 0.0, 0.0, 0.0 }; /* initialize moment tensor to 0 */
-    PetscReal source_coor[] = { 400.0, 400.0 }; /* define source location */
+    PetscReal source_coor[] = { 400.1, 400.1 }; /* define source location */
     PetscReal M;
     
     M = 1000.0; /* gar6more input usings M/rho = 1 */
@@ -3667,6 +4658,7 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
     
     ierr = SeismicSourceCreate(ctx,SOURCE_TYPE_MOMENT,SOURCE_IMPL_NEAREST_QPOINT,source_coor,moment,&src[1]);CHKERRQ(ierr); /* note the index of src[] here */
   }
+  
   /* setup sources */
   for (s=0; s<nsources; s++) {
     ierr = SeismicSourceSetup(src[s]);CHKERRQ(ierr);
@@ -3678,20 +4670,25 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   */
   ierr = SeismicSourceEvaluate(0.0,nsources,src,NULL,g);CHKERRQ(ierr);
 
-  ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,"f.vts",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
-  ierr = VecView(g,viewer);CHKERRQ(ierr);
-  ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+  if (dump_ic_src_vts) {
+    ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,"f.vts",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
+    ierr = VecView(g,viewer);CHKERRQ(ierr);
+    ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+  }
   
   /* 
    Define two source time functions
   */
   ierr = PetscMalloc1(nsources,&stf);CHKERRQ(ierr);
+  for (s=0; s<nsources; s++) {
+    stf[s] = NULL;
+  }
   
   /* configure stf for source 1 */
-  ierr = SeismicSTFCreate_Ricker(0.15,12.0,1.0,&stf[0]);CHKERRQ(ierr); /* note the index of stf[] here */
+  if (src[0]) { ierr = SeismicSTFCreate_Ricker(0.15,12.0,1.0,&stf[0]);CHKERRQ(ierr); /* note the index of stf[] here */ }
 
   /* configure stf for source 2 */
-  ierr = SeismicSTFCreate_Ricker(0.25,4.0,1.0,&stf[1]);CHKERRQ(ierr); /* note the index of stf[] here */
+  if (src[1]) { ierr = SeismicSTFCreate_Ricker(0.25,4.0,1.0,&stf[1]);CHKERRQ(ierr); /* note the index of stf[] here */ }
 
   /*
    Define the location of the receivers
@@ -3717,7 +4714,7 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   PetscPrintf(PETSC_COMM_WORLD,"[se2wave] Requested time period: %1.4e\n",time_max);
   
   ierr = ElastoDynamicsComputeTimeStep_2d(ctx,&dt);CHKERRQ(ierr);
-  dt = dt * 0.2;
+  dt = dt * 0.5;
   ierr = PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);CHKERRQ(ierr);
   PetscPrintf(PETSC_COMM_WORLD,"[se2wave] Using time step size: %1.4e\n",dt);
   
@@ -3756,8 +4753,6 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
     ierr = VecAXPY(v,0.5*dt,a);CHKERRQ(ierr); /* v_{n+1} = v' + 0.5.dt.a_{n+1} */
     
     if (k%100 == 0) {
-      PetscReal nrm,max,min;
-      
       PetscPrintf(PETSC_COMM_WORLD,"[step %9D] time = %1.4e : dt = %1.4e \n",k,time,dt);
       VecNorm(u,NORM_2,&nrm);
       VecMin(u,0,&min);
@@ -3770,13 +4765,13 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
     /*
       Write out the u,v,a values at each receiver
     */
-    ierr = RecordUVA_MultipleStations_NearestGLL(ctx,time,nrecv,xr_list,u,v,a);CHKERRQ(ierr);
+    if (!ignore_receiver_output) {
+      ierr = RecordUVA_MultipleStations_NearestGLL(ctx,time,nrecv,xr_list,u,v,a);CHKERRQ(ierr);
+    }
     
     if (k%of == 0) {
-      char name[PETSC_MAX_PATH_LEN];
-      
-      PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4d.vts",k);
-      ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
+      ierr = PetscSNPrintf(vts_fname,PETSC_MAX_PATH_LEN-1,"step-%.4D.vts",k);CHKERRQ(ierr);
+      ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,vts_fname,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
       ierr = VecView(u,viewer);CHKERRQ(ierr);
       ierr = VecView(v,viewer);CHKERRQ(ierr);
       ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
@@ -3786,29 +4781,23 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
       break;
     }
   }
-  {
-    PetscReal nrm,max,min;
-    
-    PetscPrintf(PETSC_COMM_WORLD,"[step %9D] time = %1.4e : dt = %1.4e \n",k,time,dt);
-    VecNorm(u,NORM_2,&nrm);
-    VecMin(u,0,&min);
-    VecMax(u,0,&max); PetscPrintf(PETSC_COMM_WORLD,"  [displacement] max = %+1.4e : min = %+1.4e : l2 = %+1.4e \n",max,min,nrm);
-    VecNorm(v,NORM_2,&nrm);
-    VecMin(v,0,&min);
-    VecMax(v,0,&max); PetscPrintf(PETSC_COMM_WORLD,"  [velocity]     max = %+1.4e : min = %+1.4e : l2 = %+1.4e \n",max,min,nrm);
-  }
+  PetscPrintf(PETSC_COMM_WORLD,"[step %9D] time = %1.4e : dt = %1.4e \n",k,time,dt);
+  VecNorm(u,NORM_2,&nrm);
+  VecMin(u,0,&min);
+  VecMax(u,0,&max); PetscPrintf(PETSC_COMM_WORLD,"  [displacement] max = %+1.4e : min = %+1.4e : l2 = %+1.4e \n",max,min,nrm);
+  VecNorm(v,NORM_2,&nrm);
+  VecMin(v,0,&min);
+  VecMax(v,0,&max); PetscPrintf(PETSC_COMM_WORLD,"  [velocity]     max = %+1.4e : min = %+1.4e : l2 = %+1.4e \n",max,min,nrm);
   
   /* plot last snapshot */
-  {
-    char name[PETSC_MAX_PATH_LEN];
-    
-    PetscSNPrintf(name,PETSC_MAX_PATH_LEN-1,"step-%.4d.vts",k);
-    ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
-    ierr = VecView(u,viewer);CHKERRQ(ierr);
-    ierr = VecView(v,viewer);CHKERRQ(ierr);
-    ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
-  }
+  ierr = PetscSNPrintf(vts_fname,PETSC_MAX_PATH_LEN-1,"step-%.4D.vts",k);CHKERRQ(ierr);
+  ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,vts_fname,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
+  ierr = VecView(u,viewer);CHKERRQ(ierr);
+  ierr = VecView(v,viewer);CHKERRQ(ierr);
+  ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
   
+  
+  ierr = PetscFree(xr_list);CHKERRQ(ierr);
   for (s=0; s<nsources; s++) {
     ierr = SeismicSourceDestroy(&src[s]);CHKERRQ(ierr);
     ierr = SeismicSTFDestroy(&stf[s]);CHKERRQ(ierr);
@@ -3825,6 +4814,115 @@ PetscErrorCode se2wave_demo(PetscInt mx,PetscInt my)
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode test_SeismicSTF(void)
+{
+  PetscErrorCode ierr;
+  SeismicSTF     stf;
+  PetscInt       k,nt;
+  PetscReal      time,time_max,dt;
+  FILE           *fp;
+  PetscMPIInt    commsize;
+  char           filename[PETSC_MAX_PATH_LEN];
+  PetscBool      is_ricker = PETSC_FALSE,is_yoffe = PETSC_FALSE;
+  
+  ierr = MPI_Comm_size(PETSC_COMM_WORLD,&commsize);CHKERRQ(ierr);
+  if (commsize != 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Test should be executed on a single MPI rank");
+
+  ierr = PetscOptionsGetBool(NULL,NULL,"-stf_ricker",&is_ricker,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-stf_yoffe",&is_yoffe,NULL);CHKERRQ(ierr);
+  if (!is_ricker && !is_yoffe) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"No STF implementation specified. Use one of { -stf_ricker , -stf_yoffe }");
+  
+  /* Define ricker time functions */
+  if (is_ricker) {
+    PetscReal t0,freq,amp;
+    
+    t0   = 0.15;
+    freq = 12.0;
+    amp  = 1.0;
+    ierr = PetscOptionsGetReal(NULL,NULL,"-stf.ricker.t0",&t0,NULL);CHKERRQ(ierr);
+    ierr = PetscOptionsGetReal(NULL,NULL,"-stf.ricker.freq",&freq,NULL);CHKERRQ(ierr);
+    ierr = PetscOptionsGetReal(NULL,NULL,"-stf.ricker.amp",&amp,NULL);CHKERRQ(ierr);
+    ierr = SeismicSTFCreate_Ricker(0.15,12.0,1.0,&stf);CHKERRQ(ierr);
+    
+    ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"%s","SeismicSTF_Ricker.log");CHKERRQ(ierr);
+    fp = NULL;
+    fp = fopen(filename,"w");
+    if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
+    
+    fprintf(fp,"# --------------------------------\n");
+    fprintf(fp,"# SeismicSTF\n");
+    fprintf(fp,"#   Parameters\n");
+    fprintf(fp,"#     type  \"Ricker\"\n");
+    fprintf(fp,"#     t0    %+1.12e (sec)\n",t0);
+    fprintf(fp,"#     freq  %+1.12e (Hz)\n",freq);
+    fprintf(fp,"#     amp   %+1.12e\n",amp);
+    fprintf(fp,"# --------------------------------\n");
+  }
+  if (is_yoffe) {
+    PetscReal tau_S,tau_R,D_max;
+    
+    tau_S = 0.15;
+    tau_R = 1.0;
+    D_max = 1.1;
+    ierr = PetscOptionsGetReal(NULL,NULL,"-stf.yoffe.tau_s",&tau_S,NULL);CHKERRQ(ierr);
+    ierr = PetscOptionsGetReal(NULL,NULL,"-stf.yoffe.tau_r",&tau_R,NULL);CHKERRQ(ierr);
+    ierr = PetscOptionsGetReal(NULL,NULL,"-stf.yoffe.d_max",&D_max,NULL);CHKERRQ(ierr);
+    ierr = SeismicSTFCreate_TriRegYoffe(tau_S,tau_R,D_max,&stf);CHKERRQ(ierr);
+    
+    ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"%s","SeismicSTF_Yoffe.log");CHKERRQ(ierr);
+    fp = NULL;
+    fp = fopen(filename,"w");
+    if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",filename);
+    
+    fprintf(fp,"# --------------------------------\n");
+    fprintf(fp,"# SeismicSTF\n");
+    fprintf(fp,"#   Parameters\n");
+    fprintf(fp,"#     type  \"Yoffe\"\n");
+    fprintf(fp,"#     tau_S %+1.12e\n",tau_S);
+    fprintf(fp,"#     tau_R %+1.12e\n",tau_R);
+    fprintf(fp,"#     D_max %+1.12e\n",D_max);
+    fprintf(fp,"# --------------------------------\n");
+    
+    //SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Parameters need to be checked for Yoffe STF verification test");
+  }
+
+
+  
+  /* Initialize time loop */
+  k = 0;
+  time = 0.0;
+  
+  time_max = 2.0;
+  ierr = PetscOptionsGetReal(NULL,NULL,"-tmax",&time_max,NULL);CHKERRQ(ierr);
+  PetscPrintf(PETSC_COMM_WORLD,"[se2wave] Requested time period: %1.4e\n",time_max);
+  
+  dt = 1.0e-6;
+  ierr = PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);CHKERRQ(ierr);
+  PetscPrintf(PETSC_COMM_WORLD,"[se2wave] Using time step size: %1.4e\n",dt);
+  
+  /* Perform time stepping */
+  nt = PETSC_MAX_INT;
+  for (k=0; k<=nt; k++) {
+    PetscReal stf_value;
+    
+    /* Evaluate source time function, S(t_{n+1}) */
+    ierr = SeismicSTFEvaluate(stf,time,&stf_value);CHKERRQ(ierr);
+    
+    fprintf(fp,"%+1.6e %+1.12e\n",time,stf_value);
+    
+    time = time + dt;
+    if (time >= time_max) {
+      break;
+    }
+  }
+  PetscPrintf(PETSC_COMM_WORLD,"[step %9D] time = %1.4e : dt = %1.4e \n",k,time,dt);
+  
+  fclose(fp);
+  ierr = SeismicSTFDestroy(&stf);CHKERRQ(ierr);
+  
+  PetscFunctionReturn(0);
+}
+
 int main(int argc,char **args)
 {
   PetscErrorCode ierr;
@@ -3833,13 +4931,24 @@ int main(int argc,char **args)
   
   ierr = PetscInitialize(&argc,&args,(char*)0,NULL);CHKERRQ(ierr);
   ierr = MPI_Comm_size(PETSC_COMM_WORLD,&size);CHKERRQ(ierr);
-  if (size != 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Only supports sequential execution - no MPI support");
   
   mx = my = 8;
   ierr = PetscOptionsGetInt(NULL,NULL,"-mx",&mx,NULL);CHKERRQ(ierr);
   my = mx;
   ierr = PetscOptionsGetInt(NULL,NULL,"-my",&my,NULL);CHKERRQ(ierr);
-  
+
+  /* STF test */
+  {
+    PetscBool found;
+    
+    ierr = PetscOptionsGetBool(NULL,NULL,"-verify_stf",&found,NULL);CHKERRQ(ierr);
+    if (found) {
+      ierr = test_SeismicSTF();CHKERRQ(ierr);
+      ierr = PetscFinalize();
+      return 0;
+    }
+  }
+
   //ierr = specfem(mx,my);CHKERRQ(ierr);
   //ierr = specfem_ex2(mx,my);CHKERRQ(ierr); // comparison with sem2dpack
   //ierr = specfem_gare6(mx,my);CHKERRQ(ierr); // comparison with gare6more

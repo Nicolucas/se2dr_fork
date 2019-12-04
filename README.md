@@ -3,19 +3,20 @@
 `SE2Wave` is a toy implementation of the spectral element method in 2D for wave propagation problems in heterogenous media.
 
 #### Features 
-1. Run-time selection of polynomial degree
-2. Extensible source-time function object
-3. Multiple sources, which independent source-time functions
-4. Piece-wise constant (cell-wise) material properties
+* Run-time selection of polynomial degree
+* Extensible source-time function object
+* Multiple sources, which independent source-time functions
+* Piece-wise constant (cell-wise) material properties
+* Support for MPI (parallel) execution
 
-#### Current implementation limitations
-1. Rectangular domains and rectangular elements only
-2. No support for MPI (parallel) execution
-3. Support for multiple receivers is not ideal (no buffering, hardcoded output)
-4. No PML support
+
+#### Implementation restrictions
+* Rectangular domains and rectangular elements only
+* Support for multiple receivers is not generalised (hard coded output) or optimized (no buffering of output)
+* No PML support
+
 
 ### 1. Installation ###
-
 * Requires a C compiler
 * Requires PETSc (`https://www.mcs.anl.gov/petsc`)
 * Must be compiled with PETSc version 3.9. This can be downloaded from here `https://www.mcs.anl.gov/petsc/download`
