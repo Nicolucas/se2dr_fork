@@ -1529,7 +1529,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_NearestInternalQP(
   ierr = PetscMalloc(sizeof(PetscInt)*nsources,&closest_qp);CHKERRQ(ierr);
   
   /* locate cell containing source */
-  ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
+  ierr = DMGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
   dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
   dy = (gmax[1] - gmin[1])/((PetscReal)c->my_g);
   for (k=0; k<nsources; k++) {
@@ -1745,7 +1745,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d(SpecFECtx c,PetscI
   ierr = PetscMalloc(sizeof(PetscInt)*nsources,&eowner_source);CHKERRQ(ierr);
   
   /* locate cell containing source */
-  ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
+  ierr = DMGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
   dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
   dy = (gmax[1] - gmin[1])/((PetscReal)c->my_g);
   for (k=0; k<nsources; k++) {
@@ -1937,7 +1937,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_Kernel_CSpline(Spe
   PetscBool flg;
   
   if (c->size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Needs updating to support MPI");
-  ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
+  ierr = DMGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
   dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
   dy = (gmax[1] - gmin[1])/((PetscReal)c->my_g);
   ds = dx;
@@ -2088,7 +2088,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamicsMomentDirac2d_P0(SpecFECtx c,Pet
   ierr = PetscMalloc(sizeof(PetscInt)*nsources,&eowner_source);CHKERRQ(ierr);
   
   /* locate cell containing source */
-  ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
+  ierr = DMGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
   dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
   dy = (gmax[1] - gmin[1])/((PetscReal)c->my_g);
   for (k=0; k<nsources; k++) {
@@ -2288,7 +2288,7 @@ PetscErrorCode ElastoDynamicsComputeTimeStep_2d(SpecFECtx ctx,PetscReal *_dt)
   order = ctx->basisorder;
   polynomial_fac = 1.0 / (2.0 * (PetscReal)order + 1.0);
   
-  ierr = DMDAGetBoundingBox(ctx->dm,gmin,gmax);CHKERRQ(ierr);
+  ierr = DMGetBoundingBox(ctx->dm,gmin,gmax);CHKERRQ(ierr);
   dx = (gmax[0] - gmin[0])/((PetscReal)ctx->mx_g);
   dy = (gmax[1] - gmin[1])/((PetscReal)ctx->my_g);
   
@@ -2382,7 +2382,7 @@ PetscErrorCode RecordUV(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,Vec v)
     }
   }
   
-  ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
+  ierr = DMGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
   dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
   ei = (xr[0] - gmin[0])/dx; /* todo - needs to be sub-domain gmin */
   
@@ -2493,7 +2493,7 @@ PetscErrorCode RecordUV_interp(SpecFECtx c,PetscReal time,PetscReal xr[],Vec u,V
   }
   
   /* get containing element */
-  ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
+  ierr = DMGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
   dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
   ei = (xr[0] - gmin[0])/dx; /* todo - needs to be sub-domain gmin */
   
@@ -2601,7 +2601,7 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_SEQ(SpecFECtx c,PetscReal t
     ierr = PetscSNPrintf(filename,PETSC_MAX_PATH_LEN-1,"closestqpsource-receiverCP-uva-%Dx%D-p%D.dat",c->mx_g,c->my_g,c->basisorder);CHKERRQ(ierr);
     ierr = PetscMalloc1(nr,&nid_list);CHKERRQ(ierr);
     
-    ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
+    ierr = DMGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
     ierr = DMGetCoordinates(c->dm,&coor);CHKERRQ(ierr);
     ierr = VecGetArrayRead(coor,&LA_c);CHKERRQ(ierr);
     
@@ -2713,7 +2713,7 @@ PetscErrorCode RecordUVA_MultipleStations_NearestGLL_MPI(SpecFECtx c,PetscReal t
       gll_list[r] = -1;
     }
 
-    ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
+    ierr = DMGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
     ierr = SpecFECtxGetLocalBoundingBox(c,gmin_domain,gmax_domain);CHKERRQ(ierr);
     
     ierr = DMGetCoordinatesLocal(c->dm,&coor);CHKERRQ(ierr);
@@ -3006,7 +3006,7 @@ PetscErrorCode SeismicSourceCreate(SpecFECtx c,SeismicSourceType type,SeismicSou
   
   ierr = MPI_Comm_rank(PETSC_COMM_WORLD,&rank);CHKERRQ(ierr);
   /* locate cell containing source */
-  ierr = DMDAGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
+  ierr = DMGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
   dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
   dy = (gmax[1] - gmin[1])/((PetscReal)c->my_g);
   
