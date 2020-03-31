@@ -6,6 +6,7 @@
 #   export PYTHONPATH=${SE2WAVE_ROOT}/utils/python:${PETSC_DIR}/lib/petsc/bin
 #
 
+import os as os
 import se2waveload as load
 
 filename = "/Users/dmay/codes/se2wave-dev/se2wave/default_mesh_coor.pbin"

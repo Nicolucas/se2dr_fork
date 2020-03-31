@@ -6,11 +6,12 @@
 #   export PYTHONPATH=${SE2WAVE_ROOT}/utils/python:${PETSC_DIR}/lib/petsc/bin
 #
 
+import os as os
 import se2waveload as load
 
 path = "/Users/dmay/codes/se2wave-dev/se2wave/"
 
-m_filename = path + "step-0100_wavefield.json"
+m_filename = os.path.join(path,"step-0100_wavefield.json")
 se2 = load.se2wave_load_json(m_filename,debug=True)
 print('wavefield filename ->',se2['se2wave']['data']['filename'])
 has_displacement = False
@@ -24,7 +25,7 @@ print('fields:',se2['se2wave']['data']['fields'])
 print('fields: displacement?',has_displacement)
 print('fields: vel?',has_velocity)
 
-heavydata_filename = path + se2['se2wave']['data']['filename']
+heavydata_filename = os.path.join(path,se2['se2wave']['data']['filename'])
 se2_field = load.se2wave_load_wavefield(heavydata_filename,has_displacement,has_velocity,debug=True);
 
 if has_displacement:
@@ -38,11 +39,11 @@ if has_velocity:
   mm = max(abs(se2_field['vel']))
   print('max |v|',mm)
 
-m_filename = path + "default_mesh_coor.json"
+m_filename = os.path.join(path,"default_mesh_coor.json")
 se2 = load.se2wave_load_json(m_filename,debug=True)
 print('coor filename ->',se2['se2wave']['data']['filename'])
 
-heavydata_filename = path + se2['se2wave']['data']['filename']
+heavydata_filename = os.path.join(path,se2['se2wave']['data']['filename'])
 se2_coor = load.se2wave_load_coordinates(heavydata_filename,debug=True);
 print(se2_coor['coor'])
 
