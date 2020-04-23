@@ -15,6 +15,9 @@ all:
 	-@${MAKE} se2wave.app
 	-@${MAKE} se2dr.app
 
+se2wave.app: se2wave.o
+	${PCC} ${CFLAGS} -o se2wave.app se2wave.o ${INC} ${LIB}
+
 se2dr.app: se2dr.o rupture.o
 	${PCC} ${CFLAGS} -o se2dr.app se2dr.o rupture.o ${INC} ${LIB}
 

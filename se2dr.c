@@ -3262,6 +3262,159 @@ PetscErrorCode RecordDRVar_MultipleStations_NearestGLL_SEQ(SpecFECtx c,PetscReal
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode SE2WaveViewer_JSON(SpecFECtx ctx,PetscInt step,PetscReal time,
+                                  const char data_description[],PetscInt len,const char *fieldname[],const Vec field[],
+                                  const char pbin[],const char jfilename[])
+{
+  PetscErrorCode ierr;
+  char str[PETSC_MAX_PATH_LEN];
+  FILE *fp = NULL;
+  PetscMPIInt commrank;
+  PetscInt k;
+  
+  ierr = MPI_Comm_rank(PETSC_COMM_WORLD,&commrank);CHKERRQ(ierr);
+  if (commrank != 0) PetscFunctionReturn(0);
+  
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"%s",jfilename);CHKERRQ(ierr);
+  fp = fopen(str,"w");
+  if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open file \"%s\"",str);
+  
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"{\"se2wave\":{");CHKERRQ(ierr); fprintf(fp,"%s\n",str);
+  
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"  \"time\": %1.12e",time);CHKERRQ(ierr); fprintf(fp,"%s,\n",str);
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"  \"step\": %D",step);CHKERRQ(ierr); fprintf(fp,"%s,\n",str);
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"  \"spatial_dimension\": %D",ctx->dim);CHKERRQ(ierr); fprintf(fp,"%s,\n",str);
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"  \"mx\": %D",ctx->mx_g);CHKERRQ(ierr); fprintf(fp,"%s,\n",str);
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"  \"my\": %D",ctx->my_g);CHKERRQ(ierr); fprintf(fp,"%s,\n",str);
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"  \"nx\": %D",ctx->nx_g);CHKERRQ(ierr); fprintf(fp,"%s,\n",str);
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"  \"ny\": %D",ctx->ny_g);CHKERRQ(ierr); fprintf(fp,"%s,\n",str);
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"  \"basis_degree\": %D",ctx->basisorder);CHKERRQ(ierr); fprintf(fp,"%s,\n",str);
+  
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"  \"fields\": [ ");CHKERRQ(ierr); fprintf(fp,"%s",str);
+  for (k=0; k<len; k++) {
+    ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"\"null\"");CHKERRQ(ierr);
+    if (field[k]) {
+      ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"\"%s\"",fieldname[k]);CHKERRQ(ierr);
+    }
+    
+    if (k != (len-1)) { fprintf(fp,"%s, ",str);
+    } else { fprintf(fp,"%s",str); }
+  }
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1," ]");CHKERRQ(ierr); fprintf(fp,"%s,\n",str);
+  
+  //ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"  \"datafile\": \"%s\"",pbin);CHKERRQ(ierr); fprintf(fp,"%s,\n",str);
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"  \"data\":{");CHKERRQ(ierr); fprintf(fp,"%s\n",str);
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"    \"description\": \"%s\"",data_description);CHKERRQ(ierr); fprintf(fp,"%s,\n",str);
+  
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"    \"fields\": [ ");CHKERRQ(ierr); fprintf(fp,"%s",str);
+  for (k=0; k<len; k++) {
+    ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"\"null\"");CHKERRQ(ierr);
+    if (field[k]) {
+      ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"\"%s\"",fieldname[k]);CHKERRQ(ierr);
+    }
+    
+    if (k != (len-1)) { fprintf(fp,"%s, ",str);
+    } else { fprintf(fp,"%s",str); }
+  }
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1," ]");CHKERRQ(ierr); fprintf(fp,"%s,\n",str);
+  
+  
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"    \"writer\": \"petsc_binary\"");CHKERRQ(ierr); fprintf(fp,"%s,\n",str);
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"    \"type\": \"Vec\"");CHKERRQ(ierr); fprintf(fp,"%s,\n",str);
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"    \"filename\": \"%s\"",pbin);CHKERRQ(ierr); fprintf(fp,"%s,\n",str);
+  /* petsc always writes binary in big endian ordering (even on a small endian machine) */
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"    \"endian\": \"big\"");CHKERRQ(ierr); fprintf(fp,"%s\n",str);
+  /*
+   #ifdef WORDSIZE_BIGENDIAN
+   ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"    \"endian\": \"big\"");CHKERRQ(ierr); fprintf(fp,"%s\n",str);
+   #else
+   ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"    \"endian\": \"little\"");CHKERRQ(ierr); fprintf(fp,"%s\n",str);
+   #endif
+   */
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"  }");CHKERRQ(ierr); fprintf(fp,"%s,\n",str);
+  
+  
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"  \"version\": [1,0,0]");CHKERRQ(ierr); fprintf(fp,"%s\n",str);
+  ierr = PetscSNPrintf(str,PETSC_MAX_PATH_LEN-1,"}}");CHKERRQ(ierr); fprintf(fp,"%s\n",str);
+  
+  fclose(fp);
+  
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SE2WaveCoordinateViewerViewer(SpecFECtx ctx,PetscInt step,PetscReal time,const char prefix[])
+{
+  PetscErrorCode ierr;
+  PetscViewer vu;
+  Vec coor = NULL;
+  char fname[PETSC_MAX_PATH_LEN];
+  
+  ierr = DMGetCoordinates(ctx->dm,&coor);CHKERRQ(ierr);
+  if (!coor) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Must have a valid coordinate vector");
+  
+  ierr = PetscSNPrintf(fname,PETSC_MAX_PATH_LEN-1,"%s_coor.pbin",prefix);CHKERRQ(ierr);
+  
+  {
+    char jname[PETSC_MAX_PATH_LEN];
+    Vec input[] = {NULL};
+    const char *fieldname[] = { "coor" };
+    
+    input[0] = coor;
+    ierr = PetscSNPrintf(jname,PETSC_MAX_PATH_LEN-1,"%s_coor.json",prefix);CHKERRQ(ierr);
+    ierr = SE2WaveViewer_JSON(ctx,step,time,"coordinates",1,fieldname,input,fname,jname);CHKERRQ(ierr);
+  }
+  
+  ierr = PetscViewerBinaryOpen(PETSC_COMM_WORLD,fname,FILE_MODE_WRITE,&vu);CHKERRQ(ierr);
+  
+  ierr = PetscViewerBinaryWrite(vu,(void*)&ctx->mx_g,1,PETSC_INT,PETSC_FALSE);CHKERRQ(ierr);
+  ierr = PetscViewerBinaryWrite(vu,(void*)&ctx->my_g,1,PETSC_INT,PETSC_FALSE);CHKERRQ(ierr);
+  ierr = PetscViewerBinaryWrite(vu,(void*)&ctx->nx_g,1,PETSC_INT,PETSC_FALSE);CHKERRQ(ierr);
+  ierr = PetscViewerBinaryWrite(vu,(void*)&ctx->ny_g,1,PETSC_INT,PETSC_FALSE);CHKERRQ(ierr);
+  
+  ierr = VecView(coor,vu);CHKERRQ(ierr);
+  ierr = PetscViewerDestroy(&vu);CHKERRQ(ierr);
+  
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SE2WaveWaveFieldViewer(SpecFECtx ctx,PetscInt step,PetscReal time,Vec u,Vec v,const char prefix[])
+{
+  PetscErrorCode ierr;
+  PetscViewer vu;
+  char fname[PETSC_MAX_PATH_LEN];
+  
+  if (!u && !v) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"At least one of the displacement or velocity vectors must be non-NULL");
+  
+  ierr = PetscSNPrintf(fname,PETSC_MAX_PATH_LEN-1,"%s_wavefield.pbin",prefix);CHKERRQ(ierr);
+  
+  {
+    char jname[PETSC_MAX_PATH_LEN];
+    Vec input[] = {NULL,NULL};
+    const char *fieldname[] = { "u", "v" };
+    input[0] = u;
+    input[1] = v;
+    
+    ierr = PetscSNPrintf(jname,PETSC_MAX_PATH_LEN-1,"%s_wavefield.json",prefix);CHKERRQ(ierr);
+    ierr = SE2WaveViewer_JSON(ctx,step,time,"wavefield",2,fieldname,input,fname,jname);CHKERRQ(ierr);
+  }
+  
+  ierr = PetscViewerBinaryOpen(PETSC_COMM_WORLD,fname,FILE_MODE_WRITE,&vu);CHKERRQ(ierr);
+  
+  ierr = PetscViewerBinaryWrite(vu,(void*)&ctx->mx_g,1,PETSC_INT,PETSC_FALSE);CHKERRQ(ierr);
+  ierr = PetscViewerBinaryWrite(vu,(void*)&ctx->my_g,1,PETSC_INT,PETSC_FALSE);CHKERRQ(ierr);
+  ierr = PetscViewerBinaryWrite(vu,(void*)&ctx->nx_g,1,PETSC_INT,PETSC_FALSE);CHKERRQ(ierr);
+  ierr = PetscViewerBinaryWrite(vu,(void*)&ctx->ny_g,1,PETSC_INT,PETSC_FALSE);CHKERRQ(ierr);
+  
+  ierr = PetscViewerBinaryWrite(vu,(void*)&step,1,PETSC_INT,PETSC_FALSE);CHKERRQ(ierr);
+  ierr = PetscViewerBinaryWrite(vu,(void*)&time,1,PETSC_REAL,PETSC_FALSE);CHKERRQ(ierr);
+  
+  if (u) { ierr = VecView(u,vu);CHKERRQ(ierr); }
+  if (v) { ierr = VecView(v,vu);CHKERRQ(ierr); }
+  ierr = PetscViewerDestroy(&vu);CHKERRQ(ierr);
+  
+  PetscFunctionReturn(0);
+}
+
 PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
 {
   PetscErrorCode ierr;
@@ -3412,6 +3565,14 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
   of = 5000;
   ierr = PetscOptionsGetInt(NULL,NULL,"-of",&of,NULL);CHKERRQ(ierr);
   
+  ierr = SE2WaveCoordinateViewerViewer(ctx,0,0.0,"default_mesh");CHKERRQ(ierr);
+  {
+    char prefix[PETSC_MAX_PATH_LEN];
+    
+    ierr = PetscSNPrintf(prefix,PETSC_MAX_PATH_LEN-1,"step-%.4D",0);CHKERRQ(ierr);
+    ierr = SE2WaveWaveFieldViewer(ctx,k,time,u,v,prefix);CHKERRQ(ierr);
+  }
+  
   /* Perform time stepping */
   for (k=1; k<=nt; k++) {
     
@@ -3459,6 +3620,11 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
       ierr = VecView(u,viewer);CHKERRQ(ierr);
       ierr = VecView(v,viewer);CHKERRQ(ierr);
       ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+    }
+    if (k%of == 0) {
+      char prefix[PETSC_MAX_PATH_LEN];
+      ierr = PetscSNPrintf(prefix,PETSC_MAX_PATH_LEN-1,"step-%.4D",k);CHKERRQ(ierr);
+      ierr = SE2WaveWaveFieldViewer(ctx,k,time,u,v,prefix);CHKERRQ(ierr);
     }
     
     if (time >= time_max) {
