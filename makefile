@@ -2,7 +2,7 @@
 include ${PETSC_DIR}/${PETSC_ARCH}/lib/petsc/conf/petscvariables
 include ${PETSC_DIR}/${PETSC_ARCH}/lib/petsc/conf/petscrules
 
-CFLAGS = -g -O2
+CFLAGS = -g -O2 -Wall
 INC = -I. -I${PETSC_DIR}/include ${PETSC_CC_INCLUDES}
 LIB = ${PETSC_LIB}
 
@@ -13,7 +13,10 @@ APP = $(APP:.c=.app)
 
 all:
 	-@${MAKE} se2wave.app
+	-@${MAKE} se2dr.app
 
+se2dr.app: se2dr.o rupture.o
+	${PCC} ${CFLAGS} -o se2dr.app se2dr.o rupture.o ${INC} ${LIB}
 
 %.app: %.o
 	-@echo "----- Linking $*.app -----"
