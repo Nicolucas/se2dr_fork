@@ -11,6 +11,7 @@
   PetscReal slip_rate; \
   PetscReal sigma_tau_0; \
   PetscReal sigma_n_0; \
+  PetscBool sliding; \
 
 typedef struct {
   __RUPTURE_HEADER__;
