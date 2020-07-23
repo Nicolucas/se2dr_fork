@@ -70,6 +70,20 @@ typedef struct {
   PetscReal *buffer;
 } PointwiseContext;
 
+
+/**
+ * Function to calculate weighting for the traction
+*/ 
+PetscErrorCode PetscTanHWeighting(PetscReal *Result, PetscReal ValueTrial, PetscReal CritValue,  PetscReal phi, PetscReal Amplitude, PetscReal Offset)
+{
+  PetscReal weight;
+
+  weight = 0.5 * PetscTanhReal((PetscAbsReal(phi)-Offset) * Amplitude)  + 0.5;
+
+  Result[0] =  CritValue * (1.0 - weight)  + ValueTrial * weight ;
+  PetscFunctionReturn(0);
+}
+
 /*
  warp for dr mesh
  
@@ -2876,7 +2890,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
         
         sigma_n = sigma_trial[TENS2D_YY];
         sigma_t = sigma_trial[TENS2D_XY];
-        
+
         dr_celldata[q].mu = 0;
         e_inelastic_xy = 0.0;
         sliding_active = PETSC_FALSE;
@@ -2918,7 +2932,21 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
             //slip = e_inelastic_xy * dy;
             
             //sigma_trial[TENS2D_XY] -= 2.0 * mu_qp * e_inelastic_xy;
-            sigma_trial[TENS2D_XY] = tau;
+            //sigma_trial[TENS2D_XY] = tau;
+      
+
+            if ( slip_rate < 0.0){
+              ierr = PetscTanHWeighting( &sigma_t,  sigma_t, -tau, phi_p , 4.*(c->basisorder)/c->delta,  PetscAbsReal(0.999-1.0/c->basisorder)*c->delta); CHKERRQ(ierr);
+              //ierr = PetscTanHWeighting( &sigma_t,  sigma_t, -tau, phi_p , 3.*(c->basisorder)/c->delta,  0.65*c->delta); CHKERRQ(ierr);
+
+              sigma_trial[TENS2D_XY] = sigma_t;
+            } else {
+              ierr = PetscTanHWeighting( &sigma_t,  sigma_t,  tau, phi_p , 4.*(c->basisorder)/c->delta,  PetscAbsReal(0.999-1.0/c->basisorder)*c->delta); CHKERRQ(ierr);
+              //ierr = PetscTanHWeighting( &sigma_t,  sigma_t,  tau, phi_p , 3.*(c->basisorder)/c->delta,  0.65*c->delta); CHKERRQ(ierr);
+
+              sigma_trial[TENS2D_XY] = sigma_t;
+            } 
+
             //printf("  sigma_xy %+1.8e\n",sigma_vec[TENS2D_XY]);
             sliding_active = PETSC_TRUE;
             dr_celldata[q].sliding = PETSC_TRUE;
