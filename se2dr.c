@@ -4331,6 +4331,15 @@ PetscErrorCode SE2WaveWaveFieldViewer(SpecFECtx ctx,PetscInt step,PetscReal time
   
   PetscFunctionReturn(0);
 }
+/**
+ * Function to calculate the new KV timestep following Galvez (2014) eq 27.
+ * dT_KV = (sqrt(1+(eta*eta)/(dT*dT))-eta/dT)
+*/ 
+void GetStableTimeStep(double dT, double eta, double * dT_KV)
+{
+  dT_KV[0] = (sqrt(1 + (eta/dT) * (eta/dT)) - eta / dT)*dT;
+} 
+
 
 PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
 {
@@ -4345,6 +4354,7 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
   PetscBool dump_ic_src_vts = PETSC_FALSE;
   PetscBool ignore_receiver_output = PETSC_FALSE;
   PetscReal nrm,max,min,dx,dy;
+  PetscReal gamma;
   char vts_fname[PETSC_MAX_PATH_LEN];
   
   
@@ -4470,6 +4480,15 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
   PetscPrintf(PETSC_COMM_WORLD,"[se2dr] Requested time period: %1.4e\n",time_max);
   
   ierr = ElastoDynamicsComputeTimeStep_2d(ctx,&dt);CHKERRQ(ierr);
+  
+  /** */
+  PetscPrintf(PETSC_COMM_WORLD,"[Nico] estimated dt: %1.4e\n",dt);
+  /** Artificial viscosity - KV time stepping */
+  gamma  = 0.6*dt;
+  GetStableTimeStep(dt, gamma, &dt);
+  PetscPrintf(PETSC_COMM_WORLD,"[Nico] New estimated dt: %1.4e\n",dt);
+  /** */
+
   dt = dt * 0.5;
   ierr = PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);CHKERRQ(ierr);
   PetscPrintf(PETSC_COMM_WORLD,"[se2dr] Using time step size: %1.4e\n",dt);
@@ -4510,7 +4529,7 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
     ierr = VecAXPY(v,0.5*dt,a);CHKERRQ(ierr); /* v' = v_{n} + 0.5.dt.a_{n} */
     
     /* Compute f = -F^{int}( u_{n+1} ) */
-    ierr = AssembleLinearForm_ElastoDynamics_StressGlut2d(ctx,u,v,dt,time,1.1*dt,f);CHKERRQ(ierr);
+    ierr = AssembleLinearForm_ElastoDynamics_StressGlut2d(ctx,u,v,dt,time, gamma,f);CHKERRQ(ierr);
     
     /* Update force; F^{ext}_{n+1} = f + S(t_{n+1}) g(x) */
     ierr = VecAXPY(f,1.0,g);CHKERRQ(ierr);
