@@ -1,6 +1,78 @@
 
 #include <petsc.h>
+#include <math.h>
 
+/**===============Tilting Function==============*/
+struct GeometryParams {
+  double angle;
+  double radius; 
+};
+
+/** 00. Default function, sdf geometry and gradient for a horizontal fault*/
+void horizontal_sdf(double coor[], struct GeometryParams GeoParamList, double *phi)
+{
+  *phi = coor[1];
+}
+void horizontal_grad_sdf(double coor[], struct GeometryParams GeoParamList, double grad[])
+{
+  grad[0] = 0;
+  grad[1] = 1.0;
+}
+
+/** 01. Counterclock-wise Tilted Function: sdf geometry and gradient*/
+void tilted_sdf(double coor[], struct GeometryParams GeoParamList, double *phi)
+{
+  *phi = -sin(GeoParamList.angle* M_PI/180.0) * coor[0]+ cos(GeoParamList.angle* M_PI/180.0) * coor[1];
+}
+
+void tilted_grad_sdf(double coor[], struct GeometryParams GeoParamList, double grad[])
+{
+  grad[0] = -sin(GeoParamList.angle* M_PI/180.0);
+  grad[1] = cos(GeoParamList.angle* M_PI/180.0);
+  
+  if (fabs(grad[0]) < 1.0e-12) 
+  {
+    grad[0] = 0.0;
+  }
+  if (fabs(grad[1]) < 1.0e-12) 
+  {
+    grad[1] = 0.0;
+  }
+}
+
+
+/** Definition of function to pointer for SDF */
+void (*sdf_func[])(double coor[], struct GeometryParams GeoParamList, double *phi) =
+  {horizontal_sdf, tilted_sdf};
+void (*sdf_grad_func[])(double coor[], struct GeometryParams GeoParamList, double grad[]) =
+  {horizontal_grad_sdf, tilted_grad_sdf};
+
+
+void evaluate_sdf(void *ctx,PetscReal coor[],PetscReal *phi)
+{
+  struct GeometryParams GeomParam = {0}; //Initialized to null
+  GeomParam.angle = 90.0;
+  (*sdf_func[1])(coor, GeomParam,  phi);
+}
+void evaluate_grad_sdf(void *ctx,PetscReal coor[],PetscReal grad[])
+{
+  struct GeometryParams GeomParam = {0}; //Initialized to null
+  GeomParam.angle = 90.0;
+  (*sdf_grad_func[1])(coor, GeomParam,  grad);
+}
+
+/**=============================================*/
+/** Mohr transform function */
+void MohrTranformSymmetricRot(PetscReal RotAngleDeg, PetscReal *s_xx, PetscReal *s_yy,PetscReal *s_xy)
+{
+  PetscReal RotAngle = RotAngleDeg * M_PI/180.0;
+
+  *s_xx = s_xx[0] * cos(RotAngle)*cos(RotAngle) + s_yy[0] * sin(RotAngle)*sin(RotAngle) + (s_xy[0])* sin(2.0 * RotAngle);
+  *s_xy = (s_yy[0] - s_xx[0]) * cos(RotAngle) * sin(RotAngle) + (s_xy[0])* cos(2.0 * RotAngle);
+  *s_yy = s_xx[0] * sin(RotAngle)*sin(RotAngle) + s_yy[0] * cos(RotAngle)*cos(RotAngle) - (s_xy[0])* sin(2.0 * RotAngle);
+}
+/**=============================================*/
+/**
 void evaluate_sdf(void *ctx,PetscReal coor[],PetscReal *phi)
 {
   *phi = coor[1];
@@ -11,7 +83,26 @@ void evaluate_grad_sdf(void *ctx,PetscReal coor[],PetscReal grad[])
   grad[0] = 0;
   grad[1] = 1.0;
 }
+*/
+PetscErrorCode FaultSDFQuery(PetscReal coor[],PetscReal delta,void *ctx,PetscBool *inside)
+{
+  PetscReal phi;
+  PetscReal DistOnFault;
+  
+  *inside = PETSC_FALSE;
 
+  evaluate_sdf(ctx,coor,&phi);
+
+  DistOnFault =  sqrt((coor[0]*coor[0]+coor[1]*coor[1]) - phi*phi);
+  if (DistOnFault >  10.0e3) { PetscFunctionReturn(0); }
+  
+  if (PetscAbsReal(phi) > delta) { PetscFunctionReturn(0); }
+  *inside = PETSC_TRUE;
+  
+  PetscFunctionReturn(0);
+}
+
+/** Commented to add a version that considers tilted geometry
 PetscErrorCode FaultSDFQuery(PetscReal coor[],PetscReal delta,void *ctx,PetscBool *inside)
 {
   PetscReal phi;
@@ -26,7 +117,7 @@ PetscErrorCode FaultSDFQuery(PetscReal coor[],PetscReal delta,void *ctx,PetscBoo
   *inside = PETSC_TRUE;
   
   PetscFunctionReturn(0);
-}
+}*/
 
 PetscErrorCode FaultSDFNormal(PetscReal coor[],void *ctx,PetscReal n[])
 {

@@ -2588,6 +2588,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   QPntIsotropicElastic *celldata;
   DRVar                *dr_celldata;
   
+  PetscReal RotAngle = 90.0;
   PetscReal sigma_n_0 = 40.0 * 1.0e6;
   PetscReal sigma_t_0 = 20.0 * 1.0e6;
   PetscReal sigma_n_1 = 40.0 * 1.0e6;
@@ -2828,12 +2829,19 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       inside_fault_region = PETSC_FALSE;
       
       ierr = FaultSDFQuery(coor_qp,c->delta,NULL,&inside_fault_region);CHKERRQ(ierr);
-      if (fabs(x_cell[1]) > c->delta) { inside_fault_region = PETSC_FALSE; }
+      /** The definition of being inside or not of the fault zone is affected when tilting the geometry*/
+      /**  if (fabs(x_cell[1]) > c->delta) { inside_fault_region = PETSC_FALSE; } */
+      if (fabs(x_cell[0]) > c->delta) { inside_fault_region = PETSC_FALSE; }
 
       //if (inside_fault_region) {
       //  printf("%+1.4e %+1.4e c11 %+1.4e 10x eta %+1.4e\n",coor_qp[0],coor_qp[1],c11,eta);
       //}
       
+#if 1
+      /** Rotation of the stress wrt the fault tilt, assuming symmetric stress tensor */
+      MohrTranformSymmetricRot(RotAngle, &sigma_trial[TENS2D_XX], &sigma_trial[TENS2D_YY], &sigma_trial[TENS2D_XY]);
+      //printf("  sxx %+1.4e , syy %+1.4e : sxy %+1.4e syx \n",sigma_n_0, sigma_n_1, sigma_t_0,sigma_t_1);
+#endif
       
       /* NOTE - Not sure how to generalize the notion of an off-fault normal stress for non-planar geometries */
       /* NOTE - I'm not sure it is even well defined... */
@@ -2886,8 +2894,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
         slip_k = dr_celldata[q].slip;        
         slip = dr_celldata[q].slip + 0.5 * dt * slip_rate;
         slip = dr_celldata[q].slip;
-        
-        
+
+
         sigma_n = sigma_trial[TENS2D_YY];
         sigma_t = sigma_trial[TENS2D_XY];
 
@@ -2899,6 +2907,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
           PetscReal L = 250.0;
           PetscReal V = 2000.0;
           PetscReal mu_f;
+          PetscReal ProjOntoFaultsqr; /**Project coords to get friction in the case of tilting */
+          PetscReal MagPos; /**Projecting requires magnitude*/
           
           T = sqrt(sigma_t * sigma_t);
           
@@ -2906,7 +2916,11 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
           mu_s = 0.5;
           mu_d = 0.25;
 
-          mu_f = mu_s - (mu_s - mu_d) * (V * time - fabs(coor_qp[0])) / L;
+          /** Friction wrt the distance on the fault */
+          //mu_f = mu_s - (mu_s - mu_d) * (V * time - fabs(coor_qp[0])) / L;
+          MagPos =  (coor_qp[0] * normal[0] +  coor_qp[1] * normal[1]);
+          ProjOntoFaultsqr = (coor_qp[0] - MagPos*normal[0])*(coor_qp[0] - MagPos*normal[0]) + (coor_qp[1] - MagPos*normal[1])*(coor_qp[1] - MagPos*normal[1]);
+          mu_f = mu_s - (mu_s - mu_d) * (V * time - sqrt(ProjOntoFaultsqr)) / L;
           mu_friction = PetscMax(mu_d,mu_f);
           
           dr_celldata[q].mu = mu_friction;
@@ -2936,16 +2950,15 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       
 
             if ( slip_rate < 0.0){
-              ierr = PetscTanHWeighting( &sigma_t,  sigma_t, -tau, phi_p , 4.*(c->basisorder)/c->delta,  PetscAbsReal(0.999-1.0/c->basisorder)*c->delta); CHKERRQ(ierr);
-              //ierr = PetscTanHWeighting( &sigma_t,  sigma_t, -tau, phi_p , 3.*(c->basisorder)/c->delta,  0.65*c->delta); CHKERRQ(ierr);
-
-              sigma_trial[TENS2D_XY] = sigma_t;
+              //ierr = PetscTanHWeighting( &sigma_t,  sigma_t, -tau, phi_p , 4.*(c->basisorder)/c->delta,  PetscAbsReal(0.999-1.0/c->basisorder)*c->delta); CHKERRQ(ierr);
+              ierr = PetscTanHWeighting( &sigma_t,  sigma_t, -tau, phi_p , 4.*(c->basisorder)/c->delta,  0.65*c->delta); CHKERRQ(ierr);
             } else {
-              ierr = PetscTanHWeighting( &sigma_t,  sigma_t,  tau, phi_p , 4.*(c->basisorder)/c->delta,  PetscAbsReal(0.999-1.0/c->basisorder)*c->delta); CHKERRQ(ierr);
-              //ierr = PetscTanHWeighting( &sigma_t,  sigma_t,  tau, phi_p , 3.*(c->basisorder)/c->delta,  0.65*c->delta); CHKERRQ(ierr);
+              //ierr = PetscTanHWeighting( &sigma_t,  sigma_t,  tau, phi_p , 4.*(c->basisorder)/c->delta,  PetscAbsReal(0.999-1.0/c->basisorder)*c->delta); CHKERRQ(ierr);
+              ierr = PetscTanHWeighting( &sigma_t,  sigma_t,  tau, phi_p , 4.*(c->basisorder)/c->delta,  0.65*c->delta); CHKERRQ(ierr);
+            }
 
-              sigma_trial[TENS2D_XY] = sigma_t;
-            } 
+            sigma_trial[TENS2D_XY] = sigma_t;
+ 
 
             //printf("  sigma_xy %+1.8e\n",sigma_vec[TENS2D_XY]);
             sliding_active = PETSC_TRUE;
@@ -3036,7 +3049,12 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
         sigma_trial[TENS2D_XY] -= sigma_t_0;
         sigma_trial[TENS2D_YY] -= (-sigma_n_0); /* negative in compression */
       }
-      
+#if 1
+      /** Rotation back of the stress wrt the fault tilt, assuming symmetric stress tensor */
+      MohrTranformSymmetricRot(-RotAngle, &sigma_trial[TENS2D_XX], &sigma_trial[TENS2D_YY], &sigma_trial[TENS2D_XY]);
+      //printf("  sxx %+1.4e , syy %+1.4e ,  sxy %+1.4e \n",sigma_trial[TENS2D_XX], sigma_trial[TENS2D_YY], sigma_trial[TENS2D_XY]);
+#endif
+
       /* These components weren't modified in the horizontal fault case - but they might be in general */
       sigma_vec[TENS2D_XX] = sigma_trial[TENS2D_XX];
       sigma_vec[TENS2D_YY] = sigma_trial[TENS2D_YY];

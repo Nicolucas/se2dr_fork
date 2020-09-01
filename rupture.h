@@ -28,9 +28,16 @@ typedef struct {
   PetscReal theta; /* state variable required by R&S */
 } DRVarState;
 
+void horizontal_sdf(double coor[], struct GeometryParams GeoParamList, double *phi);
+void horizontal_grad_sdf(double coor[], struct GeometryParams GeoParamList, double grad[]);
+void tilted_sdf(double coor[], struct GeometryParams GeoParamList, double *phi);
+void tilted_grad_sdf(double coor[], struct GeometryParams GeoParamList, double grad[]);
+
+
 
 void evaluate_sdf(void *ctx,PetscReal coor[],PetscReal *phi);
 void FricSW(double *Fric, double mu_s, double mu_d, double D_c, double Slip);
+void MohrTranformSymmetricRot(PetscReal RotAngleDeg, PetscReal *s_xx, PetscReal *s_yy,PetscReal *s_xy);
 
 PetscErrorCode FaultSDFQuery(PetscReal coor[],PetscReal delta,void *ctx,PetscBool *inside);
 PetscErrorCode FaultSDFNormal(PetscReal coor[],void *ctx,PetscReal n[]);
