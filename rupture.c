@@ -23,6 +23,10 @@ void horizontal_grad_sdf(double coor[], struct GeometryParams GeoParamList, doub
 void tilted_sdf(double coor[], struct GeometryParams GeoParamList, double *phi)
 {
   *phi = -sin(GeoParamList.angle* M_PI/180.0) * coor[0]+ cos(GeoParamList.angle* M_PI/180.0) * coor[1];
+  if (fabs(*phi) < 1.0e-12) 
+  {
+    *phi = 0.0;
+  }
 }
 
 void tilted_grad_sdf(double coor[], struct GeometryParams GeoParamList, double grad[])
@@ -87,13 +91,14 @@ void evaluate_grad_sdf(void *ctx,PetscReal coor[],PetscReal grad[])
 PetscErrorCode FaultSDFQuery(PetscReal coor[],PetscReal delta,void *ctx,PetscBool *inside)
 {
   PetscReal phi;
+  PetscReal normal[2];
   PetscReal DistOnFault;
   
   *inside = PETSC_FALSE;
-
+  FaultSDFNormal(ctx,coor,normal);
   evaluate_sdf(ctx,coor,&phi);
 
-  DistOnFault =  sqrt((coor[0]*coor[0]+coor[1]*coor[1]) - phi*phi);
+  DistOnFault = sqrt((coor[0] - (phi)*normal[0])*(coor[0] - (phi)*normal[0]) + (coor[1] - (phi)*normal[1])*(coor[1] - (phi)*normal[1]));
   if (DistOnFault >  10.0e3) { PetscFunctionReturn(0); }
   
   if (PetscAbsReal(phi) > delta) { PetscFunctionReturn(0); }
