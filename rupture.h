@@ -38,6 +38,7 @@ void tilted_grad_sdf(double coor[], struct GeometryParams GeoParamList, double g
 void evaluate_sdf(void *ctx,PetscReal coor[],PetscReal *phi);
 void FricSW(double *Fric, double mu_s, double mu_d, double D_c, double Slip);
 void MohrTranformSymmetricRot(PetscReal RotAngleDeg, PetscReal *s_xx, PetscReal *s_yy,PetscReal *s_xy);
+void DistOnTiltedFault(PetscReal coor[], PetscReal *DistOnFault);
 
 PetscErrorCode FaultSDFQuery(PetscReal coor[],PetscReal delta,void *ctx,PetscBool *inside);
 PetscErrorCode FaultSDFNormal(PetscReal coor[],void *ctx,PetscReal n[]);
