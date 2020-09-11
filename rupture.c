@@ -1,6 +1,7 @@
 
 #include <petsc.h>
 #include <math.h>
+#define CONSTFaultAngleDeg -90.000
 
 /**===============Tilting Function==============*/
 struct GeometryParams {
@@ -22,7 +23,7 @@ void horizontal_grad_sdf(double coor[], struct GeometryParams GeoParamList, doub
 /** 01. Counterclock-wise Tilted Function: sdf geometry and gradient*/
 void tilted_sdf(double coor[], struct GeometryParams GeoParamList, double *phi)
 {
-  *phi = -sin(GeoParamList.angle* M_PI/180.0) * coor[0]+ cos(GeoParamList.angle* M_PI/180.0) * coor[1];
+  *phi = -sin(GeoParamList.angle* M_PI/180.0) * coor[0] + cos(GeoParamList.angle* M_PI/180.0) * coor[1];
   if (fabs(*phi) < 1.0e-12) 
   {
     *phi = 0.0;
@@ -33,7 +34,6 @@ void tilted_grad_sdf(double coor[], struct GeometryParams GeoParamList, double g
 {
   grad[0] = -sin(GeoParamList.angle* M_PI/180.0);
   grad[1] = cos(GeoParamList.angle* M_PI/180.0);
-  
   if (fabs(grad[0]) < 1.0e-12) 
   {
     grad[0] = 0.0;
@@ -55,13 +55,13 @@ void (*sdf_grad_func[])(double coor[], struct GeometryParams GeoParamList, doubl
 void evaluate_sdf(void *ctx,PetscReal coor[],PetscReal *phi)
 {
   struct GeometryParams GeomParam = {0}; //Initialized to null
-  GeomParam.angle = 90.0;
+  GeomParam.angle = CONSTFaultAngleDeg;
   (*sdf_func[1])(coor, GeomParam,  phi);
 }
 void evaluate_grad_sdf(void *ctx,PetscReal coor[],PetscReal grad[])
 {
   struct GeometryParams GeomParam = {0}; //Initialized to null
-  GeomParam.angle = 90.0;
+  GeomParam.angle = CONSTFaultAngleDeg;
   (*sdf_grad_func[1])(coor, GeomParam,  grad);
 }
 
@@ -74,6 +74,28 @@ void MohrTranformSymmetricRot(PetscReal RotAngleDeg, PetscReal *s_xx, PetscReal 
   *s_xx = s_xx[0] * cos(RotAngle)*cos(RotAngle) + s_yy[0] * sin(RotAngle)*sin(RotAngle) + (s_xy[0])* sin(2.0 * RotAngle);
   *s_xy = (s_yy[0] - s_xx[0]) * cos(RotAngle) * sin(RotAngle) + (s_xy[0])* cos(2.0 * RotAngle);
   *s_yy = s_xx[0] * sin(RotAngle)*sin(RotAngle) + s_yy[0] * cos(RotAngle)*cos(RotAngle) - (s_xy[0])* sin(2.0 * RotAngle);
+  
+  if (fabs(*s_xx) < 1.0e-12) 
+  {
+    *s_xx = 0.0;
+  }
+  if (fabs(*s_yy) < 1.0e-12) 
+  {
+    *s_yy = 0.0;
+  }
+  if (fabs(*s_xy) < 1.0e-12) 
+  {
+    *s_xy = 0.0;
+  }
+}
+/** Get distance from a coordinate projected onto a tilted (placed here to leave it in a single spot)*/
+void DistOnTiltedFault(PetscReal coor[], PetscReal *DistOnFault)
+{
+  *DistOnFault = cos(CONSTFaultAngleDeg* M_PI/180.0) * coor[0] + sin(CONSTFaultAngleDeg* M_PI/180.0) * coor[1];
+  if (fabs(*DistOnFault) < 1.0e-12) 
+  {
+    *DistOnFault = 0.0;
+  }
 }
 /**=============================================*/
 /**
@@ -91,15 +113,15 @@ void evaluate_grad_sdf(void *ctx,PetscReal coor[],PetscReal grad[])
 PetscErrorCode FaultSDFQuery(PetscReal coor[],PetscReal delta,void *ctx,PetscBool *inside)
 {
   PetscReal phi;
-  PetscReal normal[2];
   PetscReal DistOnFault;
+  PetscReal normal[2];
   
   *inside = PETSC_FALSE;
-  FaultSDFNormal(ctx,coor,normal);
+ 
   evaluate_sdf(ctx,coor,&phi);
+  DistOnTiltedFault(coor, &DistOnFault);
 
-  DistOnFault = sqrt((coor[0] - (phi)*normal[0])*(coor[0] - (phi)*normal[0]) + (coor[1] - (phi)*normal[1])*(coor[1] - (phi)*normal[1]));
-  if (DistOnFault >  10.0e3) { PetscFunctionReturn(0); }
+  if (PetscAbsReal(DistOnFault) >  10.0e3) { PetscFunctionReturn(0); }
   
   if (PetscAbsReal(phi) > delta) { PetscFunctionReturn(0); }
   *inside = PETSC_TRUE;

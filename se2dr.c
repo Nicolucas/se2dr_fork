@@ -2588,11 +2588,11 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   QPntIsotropicElastic *celldata;
   DRVar                *dr_celldata;
   
-  PetscReal RotAngle = 90.0;
   PetscReal sigma_n_0 = 40.0 * 1.0e6;
   PetscReal sigma_t_0 = 20.0 * 1.0e6;
   PetscReal sigma_n_1 = 40.0 * 1.0e6;
   PetscReal sigma_t_1 = 20.0 * 1.0e6;
+  PetscReal RotAngle = -90.000;
   static PetscBool beenhere = PETSC_FALSE;
   static PetscReal gmin[3],gmax[3];
   PetscReal dx,dy;
@@ -2723,7 +2723,9 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       PetscReal coor_qp[2];
       PetscBool inside_fault_region;
       PetscBool sliding_active;
-      
+      PetscReal DistOnFault; /**Project coords onto fault to get friction in the case of tilting */
+      PetscReal PhiCell;
+
       dNidx = c->dN_dx[q];
       dNidy = c->dN_dy[q];
       
@@ -2829,19 +2831,24 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       inside_fault_region = PETSC_FALSE;
       
       ierr = FaultSDFQuery(coor_qp,c->delta,NULL,&inside_fault_region);CHKERRQ(ierr);
-      /** The definition of being inside or not of the fault zone is affected when tilting the geometry*/
-      /**  if (fabs(x_cell[1]) > c->delta) { inside_fault_region = PETSC_FALSE; } */
-      //if (fabs(x_cell[0]) > c->delta) { inside_fault_region = PETSC_FALSE; }
-
+      evaluate_sdf(NULL, x_cell, &PhiCell);
+      if (fabs(PhiCell) > c->delta) { inside_fault_region = PETSC_FALSE; }
+      
       //if (inside_fault_region) {
       //  printf("%+1.4e %+1.4e c11 %+1.4e 10x eta %+1.4e\n",coor_qp[0],coor_qp[1],c11,eta);
       //}
-      
-      
+      DistOnFault = 0.0;
+      DistOnTiltedFault(coor_qp, &DistOnFault);
+#if 1
+      if (inside_fault_region) {
+      MohrTranformSymmetricRot(RotAngle, &sigma_trial[TENS2D_XX], &sigma_trial[TENS2D_YY], &sigma_trial[TENS2D_XY]);
+      //printf("  sxx %+1.4e , syy %+1.4e ,  sxy %+1.4e \n",sigma_trial[TENS2D_XX], sigma_trial[TENS2D_YY], sigma_trial[TENS2D_XY]);
+      }
+#endif
       /* NOTE - Not sure how to generalize the notion of an off-fault normal stress for non-planar geometries */
       /* NOTE - I'm not sure it is even well defined... */
       if (inside_fault_region) { /* add the initial stress state on fault */
-        if (fabs(coor_qp[1]) < 1.5*1.0e3) {
+        if (fabs(DistOnFault) < 1.5*1.0e3) {
           sigma_trial[TENS2D_XY] += sigma_t_1;
           sigma_trial[TENS2D_YY] += (-sigma_n_1); /* negative in compression */
         } else {
@@ -2902,7 +2909,6 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
           PetscReal L = 250.0;
           PetscReal V = 2000.0;
           PetscReal mu_f;
-          PetscReal DistOnFault; /**Project coords onto fault to get friction in the case of tilting */
           
           T = sqrt(sigma_t * sigma_t);
           
@@ -2912,12 +2918,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
 
           /** Friction wrt the distance on the fault */
           //mu_f = mu_s - (mu_s - mu_d) * (V * time - fabs(coor_qp[0])) / L;
-          //MagPos =  (coor_qp[0] * normal[0] +  coor_qp[1] * normal[1]);
-          //ProjOntoFaultsqr = (coor_qp[0] - MagPos*normal[0])*(coor_qp[0] - MagPos*normal[0]) + (coor_qp[1] - MagPos*normal[1])*(coor_qp[1] - MagPos*normal[1]);
-          //mu_f = mu_s - (mu_s - mu_d) * (V * time - sqrt(ProjOntoFaultsqr)) / L;
-          DistOnFault = sqrt((coor_qp[0] - (phi_p)*normal[0])*(coor_qp[0] - (phi_p)*normal[0]) + (coor_qp[1] - (phi_p)*normal[1])*(coor_qp[1] - (phi_p)*normal[1]));
-          mu_f = mu_s - (mu_s - mu_d) * (V * time - (DistOnFault)) / L;
-          mu_friction = PetscMax(mu_d, mu_f);
+          mu_f = mu_s - (mu_s - mu_d) * (V * time - fabs(DistOnFault)) / L;
+          mu_friction = PetscMax(mu_d,mu_f); 
           
           dr_celldata[q].mu = mu_friction;
           
@@ -3034,7 +3036,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       /* Remove weird non-generalizable background stress state */
 
       if (inside_fault_region) { /* remove the initial stress state on fault */
-        if (fabs(coor_qp[1]) < 1.5*1.0e3) {
+        if (fabs(DistOnFault) < 1.5*1.0e3) {
           sigma_trial[TENS2D_XY] -= sigma_t_1;
           sigma_trial[TENS2D_YY] -= (-sigma_n_1); /* negative in compression */
         } else {
@@ -3045,9 +3047,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
         sigma_trial[TENS2D_XY] -= sigma_t_0;
         sigma_trial[TENS2D_YY] -= (-sigma_n_0); /* negative in compression */
       }
-#if 0
+#if 1
       if (inside_fault_region) {
-      /** Rotation back of the stress wrt the fault tilt, assuming symmetric stress tensor */
       MohrTranformSymmetricRot(-RotAngle, &sigma_trial[TENS2D_XX], &sigma_trial[TENS2D_YY], &sigma_trial[TENS2D_XY]);
       //printf("  sxx %+1.4e , syy %+1.4e ,  sxy %+1.4e \n",sigma_trial[TENS2D_XX], sigma_trial[TENS2D_YY], sigma_trial[TENS2D_XY]);
       }
