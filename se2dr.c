@@ -2592,7 +2592,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   PetscReal sigma_t_0 = 20.0 * 1.0e6;
   PetscReal sigma_n_1 = 40.0 * 1.0e6;
   PetscReal sigma_t_1 = 20.0 * 1.0e6;
-  PetscReal RotAngle = 45.0;
+  PetscReal RotAngle = CONST_FAULT_ANGLE_DEG;
   static PetscBool beenhere = PETSC_FALSE;
   static PetscReal gmin[3],gmax[3];
   PetscReal dx,dy;

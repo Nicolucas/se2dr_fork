@@ -28,6 +28,12 @@ typedef struct {
   PetscReal theta; /* state variable required by R&S */
 } DRVarState;
 
+struct GeometryParams {
+  double angle;
+  double radius;
+};
+
+
 void horizontal_sdf(double coor[], struct GeometryParams GeoParamList, double *phi);
 void horizontal_grad_sdf(double coor[], struct GeometryParams GeoParamList, double grad[]);
 void tilted_sdf(double coor[], struct GeometryParams GeoParamList, double *phi);
@@ -45,5 +51,7 @@ PetscErrorCode FaultSDFNormal(PetscReal coor[],void *ctx,PetscReal n[]);
 PetscErrorCode FaultSDFTangent(PetscReal coor[],void *ctx,PetscReal t[]);
 PetscErrorCode FaultSDFGetPlusMinusCoor(PetscReal coor[],PetscReal delta,void *ctx,
                                         PetscReal x_plus[],PetscReal x_minus[]);
+
+#define CONST_FAULT_ANGLE_DEG 45.0
 
 #endif

@@ -1,14 +1,10 @@
 
 #include <petsc.h>
 #include <math.h>
+#include <rupture.h>
 
-#define CONSTFaultAngleDeg 45
 
 /**===============Tilting Function==============*/
-struct GeometryParams {
-  double angle;
-  double radius; 
-};
 
 /** 00. Default function, sdf geometry and gradient for a horizontal fault*/
 void horizontal_sdf(double coor[], struct GeometryParams GeoParamList, double *phi)
@@ -50,13 +46,13 @@ SDFFunc mystuff[] = { horiz_sdf, tilted_sdf };
 void evaluate_sdf(void *ctx,PetscReal coor[],PetscReal *phi)
 {
   struct GeometryParams GeomParam = {0}; //Initialized to null
-  GeomParam.angle = CONSTFaultAngleDeg;
+  GeomParam.angle = CONST_FAULT_ANGLE_DEG;
   (*sdf_func[1])(coor, GeomParam,  phi);
 }
 void evaluate_grad_sdf(void *ctx,PetscReal coor[],PetscReal grad[])
 {
   struct GeometryParams GeomParam = {0}; //Initialized to null
-  GeomParam.angle = CONSTFaultAngleDeg;
+  GeomParam.angle = CONST_FAULT_ANGLE_DEG;
   (*sdf_grad_func[1])(coor, GeomParam,  grad);
 }
 
@@ -76,7 +72,7 @@ void MohrTranformSymmetricRot(PetscReal RotAngleDeg, PetscReal *s_xx, PetscReal 
 /** Get distance from a coordinate projected onto a tilted (placed here to leave it in a single spot)*/
 void DistOnTiltedFault(PetscReal coor[], PetscReal *DistOnFault)
 {
-  *DistOnFault = cos(CONSTFaultAngleDeg* M_PI/180.0) * coor[0] + sin(CONSTFaultAngleDeg* M_PI/180.0) * coor[1];
+  *DistOnFault = cos(CONST_FAULT_ANGLE_DEG* M_PI/180.0) * coor[0] + sin(CONST_FAULT_ANGLE_DEG* M_PI/180.0) * coor[1];
 }
 /**=============================================*/
 /**
