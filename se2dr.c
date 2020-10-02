@@ -2644,7 +2644,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   for (e=0; e<c->ne; e++) {
     ierr = SpecFECtxGetDRCellData(c,e,&dr_celldata);CHKERRQ(ierr);
     for (q=0; q<c->nqp; q++) {
-      dr_celldata[q].sliding = PETSC_FALSE;
+      //dr_celldata[q].sliding = PETSC_FALSE;
     }
   }
   
