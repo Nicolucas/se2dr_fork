@@ -54,11 +54,11 @@ PetscErrorCode SDFSetup(SDF,int,int);
 PetscErrorCode GeoParamsCreate(GeometryParams *_g);
 PetscErrorCode GeoParamsDestroy(GeometryParams *_g);
 
-void SDFEvaluate(SDF s,double c[],double *phi);
-void SDFEvaluateGradient(SDF s,double c[],double g[]);
+PetscErrorCode SDFEvaluate(SDF s,double c[],double *phi);
+PetscErrorCode SDFEvaluateGradient(SDF s,double c[],double g[]);
 void SDFEvaluateNormal(double c[],SDF s,double n[]);
 void SDFEvaluateTangent(double c[],SDF s,double t[]);
-void EvaluateDistOnFault(SDF s,double c[],double *distVal);
+PetscErrorCode EvaluateDistOnFault(SDF s,double c[],double *distVal);
 
 
 void horizontal_sdf(void * ctx, double coor[],  double *phi);
@@ -72,9 +72,9 @@ void Tilted_DistOnFault(void * ctx, double coor[], double *DistOnFault);
 
 
 
-void evaluate_sdf(void *ctx,PetscReal coor[],PetscReal *phi);
-void evaluate_grad_sdf(void *ctx,PetscReal coor[],PetscReal grad[]);
-void evaluate_DistOnFault_sdf(void *ctx, PetscReal coor[], double *DistOnFault);
+PetscErrorCode evaluate_sdf(void *ctx,PetscReal coor[],PetscReal *phi);
+PetscErrorCode evaluate_grad_sdf(void *ctx,PetscReal coor[],PetscReal grad[]);
+PetscErrorCode evaluate_DistOnFault_sdf(void *ctx, PetscReal coor[], double *DistOnFault);
 void EvalSlipWeakening(double *Tau, double sigma_n, double mu_s, double mu_d, double D_c,double Slip);
 
 

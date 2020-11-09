@@ -48,22 +48,25 @@ PetscErrorCode GeoParamsDestroy(GeometryParams *_g)
 }
 
 
-void SDFEvaluate(SDF s,double c[],double *phi)
+PetscErrorCode SDFEvaluate(SDF s,double c[],double *phi)
 {
     if (!s->evaluate) {
         printf("Error[SDFEvaluate]: SDF evaluator not set - must call SDFSetup() first\n");
         exit(1);
     }
     s->evaluate(s->data, c, phi);
+    PetscFunctionReturn(0);
 }
 
-void SDFEvaluateGradient(SDF s,double c[],double g[])
+PetscErrorCode SDFEvaluateGradient(SDF s,double c[],double g[])
 {
     if (!s->evaluate_gradient) {
         printf("Error[SDFEvaluateGradient]: SDF gradient valuator not set - must call SDFSetup() first\n");
         exit(1);
     }
     s->evaluate_gradient(s->data, c, g);
+
+    PetscFunctionReturn(0);
 }
 
 void SDFEvaluateNormal(double c[],SDF s,double n[])
@@ -73,6 +76,7 @@ void SDFEvaluateNormal(double c[],SDF s,double n[])
         exit(1);
     }
     s->evaluate_normal(c,s,n);
+    PetscFunctionReturn(0);
 }
 
 void SDFEvaluateTangent(double c[],SDF s,double t[])
@@ -82,15 +86,17 @@ void SDFEvaluateTangent(double c[],SDF s,double t[])
         exit(1);
     }
     s->evaluate_tangent(c,s,t);
+    PetscFunctionReturn(0);
 }
 
-void EvaluateDistOnFault(SDF s,double c[],double * distVal)
+PetscErrorCode EvaluateDistOnFault(SDF s,double c[],double * distVal)
 {
     if (!s->evaluate_DistOnFault) {
         printf("Error[EvaluateDistOnFault]: Distance on fault function not set  - must call SDFSetup() first\n");
         exit(1);
     }
     s->evaluate_DistOnFault(s->data, c, distVal);
+    PetscFunctionReturn(0);
 }
 
 /**===============Tilting Function==============*/
@@ -208,18 +214,30 @@ PetscErrorCode SDFSetup(SDF s,int dim,int type)
     PetscFunctionReturn(0);
 }
 
-void evaluate_sdf(void *ctx, PetscReal coor[],PetscReal *phi)
+PetscErrorCode evaluate_sdf(void *ctx, PetscReal coor[],PetscReal *phi)
 {
-  SDFEvaluate((SDF) ctx, coor, phi);
+  PetscErrorCode ierr;
+  SDF s = (SDF) ctx;
+  ierr = SDFEvaluate(s, coor, phi);CHKERRQ(ierr);
+
+  PetscFunctionReturn(0);
 }
-void evaluate_grad_sdf(void *ctx,PetscReal coor[],PetscReal grad[])
+PetscErrorCode evaluate_grad_sdf(void *ctx,PetscReal coor[],PetscReal grad[])
 {
-  SDFEvaluateGradient((SDF) ctx, coor, grad);
+  PetscErrorCode ierr;
+  SDF s = (SDF) ctx;
+  ierr = SDFEvaluateGradient(s, coor, grad);CHKERRQ(ierr);
+
+  PetscFunctionReturn(0);
 }
 
-void evaluate_DistOnFault_sdf(void *ctx, PetscReal coor[], double *DistOnFault)
+PetscErrorCode evaluate_DistOnFault_sdf(void *ctx, PetscReal coor[], double *DistOnFault)
 {
-  EvaluateDistOnFault((SDF) ctx, coor, DistOnFault);
+  PetscErrorCode ierr;
+  SDF s = (SDF) ctx;
+  ierr = EvaluateDistOnFault(s, coor, DistOnFault);CHKERRQ(ierr);
+
+  PetscFunctionReturn(0);
 }
 
 /**=============================================*/
@@ -243,10 +261,11 @@ PetscErrorCode FaultSDFQuery(PetscReal coor[],PetscReal delta,void *ctx,PetscBoo
   PetscReal phi;
   PetscReal DistOnFault;
   PetscReal normal[2];
+  PetscErrorCode ierr;
   
   *inside = PETSC_FALSE;
-  evaluate_sdf(ctx,coor,&phi);
-  evaluate_DistOnFault_sdf(ctx, coor, &DistOnFault);
+  ierr = evaluate_sdf(ctx,coor,&phi);CHKERRQ(ierr);
+  ierr = evaluate_DistOnFault_sdf(ctx, coor, &DistOnFault);CHKERRQ(ierr);
 
   if (PetscAbsReal(DistOnFault) >  10.0e3) { PetscFunctionReturn(0); }
   
@@ -261,8 +280,8 @@ PetscErrorCode FaultSDFQuery(PetscReal coor[],PetscReal delta,void *ctx,PetscBoo
 PetscErrorCode FaultSDFNormal(PetscReal coor[],void *ctx,PetscReal n[])
 {
   PetscReal gradphi[2],mag;
-  
-  evaluate_grad_sdf(ctx,coor,gradphi);
+  PetscErrorCode ierr;
+  ierr = evaluate_grad_sdf(ctx,coor,gradphi);CHKERRQ(ierr);
   mag = sqrt(gradphi[0]*gradphi[0] + gradphi[1]*gradphi[1]);
   n[0] = gradphi[0] / mag;
   n[1] = gradphi[1] / mag;
@@ -273,8 +292,8 @@ PetscErrorCode FaultSDFNormal(PetscReal coor[],void *ctx,PetscReal n[])
 PetscErrorCode FaultSDFTangent(PetscReal coor[],void *ctx,PetscReal t[])
 {
   PetscReal gradphi[2],mag;
-  
-  evaluate_grad_sdf(ctx,coor,gradphi);
+  PetscErrorCode ierr;
+  ierr = evaluate_grad_sdf(ctx,coor,gradphi);CHKERRQ(ierr);
   mag = sqrt(gradphi[0]*gradphi[0] + gradphi[1]*gradphi[1]);
   t[0] = -gradphi[1] / mag;
   t[1] =  gradphi[0] / mag;
@@ -289,7 +308,7 @@ PetscErrorCode FaultSDFGetPlusMinusCoor(PetscReal coor[],PetscReal delta, void *
   PetscErrorCode ierr;
   
   ierr = FaultSDFNormal(coor,ctx,normal);CHKERRQ(ierr);
-  evaluate_sdf(ctx,coor,&phi);
+  ierr = evaluate_sdf(ctx,coor,&phi);CHKERRQ(ierr);
   
   /* project to phi = 0 */
   x_plus[0] = coor[0] - phi * normal[0];

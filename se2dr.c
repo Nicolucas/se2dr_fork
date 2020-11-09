@@ -1787,6 +1787,7 @@ PetscErrorCode FaultSDFInit_v2(SpecFECtx c)
   DRVar           *dr_celldata;
   PetscReal       factor;
   PetscInt        factor_i;
+  void * the_sdf;
   
   eldofs   = c->elbuf_dofs;
   elcoords = c->elbuf_coor;
@@ -1794,6 +1795,7 @@ PetscErrorCode FaultSDFInit_v2(SpecFECtx c)
   nqp      = c->nqp;
   ndof     = c->dofs;
   element  = c->element;
+  
   
   factor = ((PetscReal)(c->ne)) * 0.1;
   factor_i = (PetscInt)factor;
@@ -1809,7 +1811,7 @@ PetscErrorCode FaultSDFInit_v2(SpecFECtx c)
   PetscPrintf(PETSC_COMM_WORLD,"Start SDF Init: ");
   ierr = SDFCreate(&c->sdf);CHKERRQ(ierr); // Allocate the struct object in memory (Might not be necessary as the original structure CTX has already allocated)
   ierr = SDFSetup(c->sdf,2,1);CHKERRQ(ierr); // Setup the type of SDF used (third argument of the function): 0-> Horizontal, 1-> Tilted, 2->Sigmoid TBA
-  
+  the_sdf  = (void *)c->sdf;
 
   for (e=0; e<c->ne; e++) {
     /* get element -> node map */
@@ -1841,13 +1843,13 @@ PetscErrorCode FaultSDFInit_v2(SpecFECtx c)
       modify_stress_state = PETSC_FALSE;
       dr_celldata[q].eid[0] = -1;
       dr_celldata[q].eid[1] = -1;
-      ierr = FaultSDFQuery(coor_qp,c->delta,(void *)c->sdf,&modify_stress_state);CHKERRQ(ierr);
+      ierr = FaultSDFQuery(coor_qp,c->delta,the_sdf,&modify_stress_state);CHKERRQ(ierr);
       if (modify_stress_state) {
         PetscReal x_plus[2],x_minus[2];
         
         //printf("[e %d , q %d] x_qp %+1.4e , %+1.4e\n",e,q,coor_qp[0],coor_qp[1]);
         
-        ierr = FaultSDFGetPlusMinusCoor(coor_qp,c->delta,(void *)c->sdf,x_plus,x_minus);CHKERRQ(ierr);
+        ierr = FaultSDFGetPlusMinusCoor(coor_qp,c->delta,the_sdf,x_plus,x_minus);CHKERRQ(ierr);
         
         ierr = PointLocation_v2(c,(const PetscReal*)x_plus, &dr_celldata[q].eid[0],&dr_celldata[q].N1_plus,&dr_celldata[q].N2_plus);CHKERRQ(ierr);
         ierr = PointLocation_v2(c,(const PetscReal*)x_minus,&dr_celldata[q].eid[1],&dr_celldata[q].N1_minus,&dr_celldata[q].N2_minus);CHKERRQ(ierr);
@@ -2299,7 +2301,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
         PetscReal e_inelastic_xy = 0.0;
         PetscReal tau,mu_s,mu_d,D_c,mu_friction,T;
 
-        evaluate_sdf((void *)c->sdf,coor_qp,&phi_p);
+        ierr = evaluate_sdf((void *)c->sdf,coor_qp,&phi_p);CHKERRQ(ierr);
         //if (phi_p < 0) printf("[e %d , q %d] x_qp %+1.4e , %+1.4e : phi %+1.4e \n",e,q,coor_qp[0],coor_qp[1],phi_p);
         //printf("  x_qp -> phi %+1.4e\n",phi_p);
         
@@ -2597,7 +2599,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   const PetscReal *LA_coor,*LA_u,*LA_v;
   QPntIsotropicElastic *celldata;
   DRVar                *dr_celldata;
-  SDF the_sdf;
+  void *the_sdf;
   
   PetscReal sigma_n_0 = 40.0 * 1.0e6;
   PetscReal sigma_t_0 = 20.0 * 1.0e6;
@@ -2844,7 +2846,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       
       ierr = FaultSDFQuery(coor_qp,c->delta,the_sdf,&inside_fault_region);CHKERRQ(ierr);
       PhiCell = 0.0;
-      evaluate_sdf(the_sdf, x_cell, &PhiCell);
+      ierr = evaluate_sdf(the_sdf, x_cell, &PhiCell);CHKERRQ(ierr);
       if (fabs(PhiCell) > c->delta) { inside_fault_region = PETSC_FALSE; }
       
       //if (inside_fault_region) {
@@ -2853,7 +2855,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
 
 
       DistOnFault = 0.0;
-      evaluate_DistOnFault_sdf(the_sdf, coor_qp, &DistOnFault);
+      ierr = evaluate_DistOnFault_sdf(the_sdf, coor_qp, &DistOnFault);CHKERRQ(ierr);
 #if 1
       MohrTranformSymmetricRot(RotAngle, &sigma_trial[TENS2D_XX], &sigma_trial[TENS2D_YY], &sigma_trial[TENS2D_XY]);
 #endif
@@ -2878,9 +2880,9 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
         PetscReal e_inelastic_xy = 0.0;
         PetscReal tau,mu_s,mu_d,D_c,mu_friction,T;
         
-        evaluate_sdf(the_sdf,coor_qp,&phi_p);
+        ierr = evaluate_sdf(the_sdf,coor_qp,&phi_p);CHKERRQ(ierr);
         
-        ierr = FaultSDFGetPlusMinusCoor(coor_qp,c->delta,(void *)c,x_plus,x_minus);CHKERRQ(ierr);
+        ierr = FaultSDFGetPlusMinusCoor(coor_qp,c->delta,the_sdf,x_plus,x_minus);CHKERRQ(ierr);
         ierr = FaultSDFTabulateInterpolation_v2(c,LA_v,&dr_celldata[q],v_plus,v_minus);CHKERRQ(ierr);
         
         ierr = FaultSDFNormal(coor_qp,the_sdf,normal);CHKERRQ(ierr);
@@ -3075,10 +3077,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       
     }
     ierr = VecSetValues(fl,nbasis*ndof,eldofs,fe,ADD_VALUES);CHKERRQ(ierr);
-    printf("\re:%d/%d",e,c->ne);
-    fflush(stdout);
   }
-  printf("\nWhats wrong here?\n");
   ierr = VecAssemblyBegin(fl);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(fl);CHKERRQ(ierr);
   ierr = DMLocalToGlobalBegin(c->dm,fl,ADD_VALUES,F);CHKERRQ(ierr);
@@ -3259,7 +3258,7 @@ PetscErrorCode Update_StressGlut2d(SpecFECtx c,Vec u,Vec v,PetscReal dt)
         PetscReal x_plus[2],x_minus[2],plus[2],minus[2];
         PetscReal normal[2],tangent[2],Uplus,Uminus,Vplus,Vminus,slip,slip_rate,phi_p;
         
-        evaluate_sdf((void *)c->sdf,coor_qp,&phi_p);
+        ierr = evaluate_sdf((void *)c->sdf,coor_qp,&phi_p);CHKERRQ(ierr);
         
         ierr = FaultSDFGetPlusMinusCoor(coor_qp,c->delta,(void *)c->sdf,x_plus,x_minus);CHKERRQ(ierr);
         
