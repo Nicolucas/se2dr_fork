@@ -54,7 +54,7 @@ PetscErrorCode SDFEvaluate(SDF s,double c[],double *phi)
         printf("Error[SDFEvaluate]: SDF evaluator not set - must call SDFSetup() first\n");
         exit(1);
     }
-    s->evaluate(s->data, c, phi);
+    s->evaluate((void *) s, c, phi);
     PetscFunctionReturn(0);
 }
 
@@ -64,7 +64,7 @@ PetscErrorCode SDFEvaluateGradient(SDF s,double c[],double g[])
         printf("Error[SDFEvaluateGradient]: SDF gradient valuator not set - must call SDFSetup() first\n");
         exit(1);
     }
-    s->evaluate_gradient(s->data, c, g);
+    s->evaluate_gradient((void *) s, c, g);
 
     PetscFunctionReturn(0);
 }
@@ -95,14 +95,14 @@ PetscErrorCode EvaluateDistOnFault(SDF s,double c[],double * distVal)
         printf("Error[EvaluateDistOnFault]: Distance on fault function not set  - must call SDFSetup() first\n");
         exit(1);
     }
-    s->evaluate_DistOnFault(s->data, c, distVal);
+    s->evaluate_DistOnFault(s, c, distVal);
     PetscFunctionReturn(0);
 }
 
-/**===============Tilting Function==============*/
+/**=============== Geometry Functions ==============*/
 
 /** 00. Default function, sdf geometry and gradient for a horizontal fault*/
-void horizontal_sdf( void * ctx, double coor[], double *phi)
+void horizontal_sdf(void * ctx, double coor[], double *phi)
 {
   *phi = coor[1];
 }
@@ -122,14 +122,16 @@ void Horizontal_DistOnFault(void * ctx, double coor[], double *DistOnFault)
 /** 01. Counterclock-wise Tilted Function: sdf geometry and gradient*/
 void tilted_sdf(void * ctx,  double coor[], double *phi)
 {
-  GeometryParams GeoParamList = (GeometryParams) ctx;
+  SDF s = (SDF) ctx;
+  GeometryParams GeoParamList = (GeometryParams) s->data;
   //printf("%f\n",GeoParamList->angle);
   *phi = -sin(GeoParamList->angle* M_PI/180.0) * coor[0] + cos(GeoParamList->angle* M_PI/180.0) * coor[1];
 }
 
 void tilted_grad_sdf(void * ctx, double coor[], double grad[])
 {
-  GeometryParams GeoParamList = (GeometryParams) ctx;
+  SDF s = (SDF) ctx;
+  GeometryParams GeoParamList = (GeometryParams) s->data;
   grad[0] = -sin(GeoParamList->angle * M_PI/180.0);
   grad[1] = cos(GeoParamList->angle * M_PI/180.0);
 }
@@ -137,12 +139,185 @@ void tilted_grad_sdf(void * ctx, double coor[], double grad[])
 /** Get distance from a coordinate projected onto a tilted (placed here to leave it in a single spot)*/
 void Tilted_DistOnFault(void *ctx, double coor[],  double *DistOnFault)
 {
-  double Fault_angle_deg = *(double*) ctx;
-  *DistOnFault = cos(Fault_angle_deg * M_PI/180.0) * coor[0] + sin(Fault_angle_deg* M_PI/180.0) * coor[1];
+  SDF s = (SDF) ctx;
+  GeometryParams GeoParamList = (GeometryParams) s->data;
+
+  *DistOnFault = cos(GeoParamList->angle * M_PI/180.0) * coor[0] + sin(GeoParamList->angle* M_PI/180.0) * coor[1];
 }
 
-/**===============Tilting Function==============*/
 
+/**=============== Sigmoid Function ==============*/
+
+// Application of a sigmoid function dependant on a parameter k for values on the interval (-1,0) 
+void Sigmoid_Function_map(double x, double *fx, double k, double amp)
+{
+  *fx = (x - x * k) / (k -fabs(x/amp) * 2.0 * k + 1.0);
+}
+
+void DerSigmoid_Function_map(double x, double *fx, double k, double amp)
+{
+  *fx = amp*(1 - k * k) / ((k - fabs(x) * 2.0 * k + 1.0)*(k - fabs(x) * 2.0 * k + 1.0));
+}
+
+// Standard distance function using as input parameters the coordinates of two points
+void DistanceFunction(double x0, double y0, double x1, double y1, double * distVal)
+{
+  *distVal = sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
+}
+
+// Function to evaluate a function in a discrete equidistant list of 2*HalfNumPoints +1 values of x. We highlight that the origin (0) and the limits
+// x0, x1 are also evaluated.
+void DiscretizeFunction(double x[], double fx[], void* ctx)
+{
+  int idx;
+  double xstepsize;
+  double x0;
+  double x1; 
+  int HalfNumPoints; 
+  double amp;
+  double k;
+
+  GeometryParams g = (GeometryParams) ctx;
+  HalfNumPoints = g->HalfNumPoints;
+  x0 = g->xorigin;
+  x1 = g->xend;
+  amp = g->amp;
+  k = g->k;
+
+
+  xstepsize = (x1 - x0)/(2.0 * HalfNumPoints);
+
+  for (idx = 0; idx <= 2 * HalfNumPoints; idx++)
+  {
+    x[idx] = xstepsize * idx + x0;
+    Sigmoid_Function_map(x[idx],  &fx[idx], k, amp);
+  }
+}
+
+
+void find_minimum_idx(double coorx, double coory, double x[], double fx[], int NumPointsDiscreteCurve, int *idxCurve)
+{
+  double minimum,DistVal;
+  int idx = -1;
+  minimum = 1.0e200;
+
+  for (int i=0; i <= NumPointsDiscreteCurve; i++)
+  {
+    DistanceFunction(coorx, coory, x[i], fx[i], &DistVal);
+    if (DistVal < minimum)
+    {
+      minimum = DistVal;
+      idx = i;
+    }
+  }
+  *idxCurve = idx;
+}
+
+PetscErrorCode initializeZeroSetCurveFault(SDF s)
+{
+  PetscErrorCode ierr;
+  GeometryParams g = (GeometryParams) s->data;
+
+  ierr = PetscCalloc1(2 * g->HalfNumPoints + 1,&s->xList);CHKERRQ(ierr);
+  ierr = PetscCalloc1(2 * g->HalfNumPoints + 1,&s->fxList);CHKERRQ(ierr);
+
+  DiscretizeFunction(s->xList, s->fxList, s->data);
+
+  PetscFunctionReturn(0);
+}
+
+/** 02. Sigmoid Function: sdf geometry and gradient*/
+
+void sigmoid_sdf(void * ctx,  double coor[], double *phi)
+{
+  double MagnitudePhi;
+  double yValue;
+
+  SDF s = (SDF) ctx;
+  DistanceFunction(coor[0], coor[1], s->xList[s->curve_idx_carrier], s->fxList[s->curve_idx_carrier], &MagnitudePhi);
+
+  GeometryParams g = (GeometryParams) s->data;
+  Sigmoid_Function_map( s->xList[s->curve_idx_carrier], &yValue, g->k, g->amp);
+  
+  if (s->fxList[s->curve_idx_carrier]<yValue)
+  {
+    *phi = -MagnitudePhi;
+  }
+  else
+  {
+    *phi = MagnitudePhi;
+  }
+}
+
+void sigmoid_grad_sdf(void * ctx, double coor[], double grad[])
+{
+  double fPrimeX;
+  double amp;
+  double k;
+  double mag;
+
+  SDF s = (SDF) ctx;
+  GeometryParams g = (GeometryParams) s->data;
+
+  amp = g->amp;
+  k = g->k;
+
+  DerSigmoid_Function_map(s->xList[s->curve_idx_carrier], &fPrimeX, k, amp);
+
+  mag = sqrt(1.0 + fPrimeX * fPrimeX);
+
+  grad[0] =  -fPrimeX / mag;
+  grad[1] =  1.0 / mag;
+}
+
+void getAngleFromDerivative(void* ctx, double *angle)
+{
+  double fPrimeX;
+  double amp;
+  double k;
+
+  SDF s = (SDF) ctx;
+  GeometryParams g = (GeometryParams) s->data;
+
+  amp = g->amp;
+  k = g->k;
+
+  DerSigmoid_Function_map(s->xList[s->curve_idx_carrier], &fPrimeX, k, amp);
+  *angle = atan(fPrimeX);
+}
+
+void Sigmoid_DistOnFault(void *ctx, double coor[],  double *DistOnFault)
+{
+  int idx;
+  SDF s = (SDF) ctx;
+  GeometryParams g = (GeometryParams) s->data;
+
+  //printf("%d\t",s->curve_idx_carrier);
+  if (g->HalfNumPoints < s->curve_idx_carrier)
+  {
+    for (idx = g->HalfNumPoints; idx <= 2 * g->HalfNumPoints ; idx++)
+    { double LocalDist={0};
+      DistanceFunction(s->xList[idx], s->fxList[idx], s->xList[idx+1], s->fxList[idx+1], &LocalDist);
+      *DistOnFault += LocalDist;
+    }
+  }
+  else if (g->HalfNumPoints > s->curve_idx_carrier)
+  {
+    for (idx = g->HalfNumPoints; idx > 1 ; idx--)
+    { double LocalDist={0};
+      DistanceFunction(s->xList[idx], s->fxList[idx], s->xList[idx-1], s->fxList[idx-1], &LocalDist);
+      *DistOnFault += LocalDist;
+    }
+  }
+  else
+  {
+    *DistOnFault = 0.0;
+  }  
+}
+/**=============== Sigmoid ==============*/
+
+
+/**===============Geometry Functions==============*/
 PetscErrorCode SDFSetup(SDF s,int dim,int type)
 { 
   PetscErrorCode ierr;
@@ -166,8 +341,7 @@ PetscErrorCode SDFSetup(SDF s,int dim,int type)
 
                 s->data = NULL;
                 printf("Data (Null) evaluated\n");
-                
-                
+  
                 break;
             
             // Tilted Fault
@@ -192,8 +366,33 @@ PetscErrorCode SDFSetup(SDF s,int dim,int type)
                 printf("... Evaluated Normal\n");
                 s->evaluate_tangent     = FaultSDFTangent;
                 printf("... Evaluated Tangent\n");
+                }
+                break;
 
-                //ierr = GeoParamsDestroy(&g);CHKERRQ(ierr);
+            case 2:
+                {
+                GeometryParams g;
+                ierr = GeoParamsCreate(&g);CHKERRQ(ierr);
+                printf("Sigmoid Fault ");
+                g->HalfNumPoints = 3000; 
+                g->k             = -0.0002;
+                g->amp           = 2.0;
+                g->xorigin       = -1.0e4;
+                g->xend          = 1.0e4;
+
+                s->data = (void *) g;
+                printf("... Evaluated data (Sigmoid parameters)\n");
+                
+                s->evaluate             = sigmoid_sdf;
+                printf("... Evaluated sdf\n");
+                s->evaluate_gradient    = sigmoid_grad_sdf;
+                printf("... Evaluated sdf gradient\n");
+                s->evaluate_DistOnFault = Sigmoid_DistOnFault;
+                printf("... Evaluated distance on fault function\n");
+                s->evaluate_normal      = FaultSDFNormal;
+                printf("... Evaluated Normal\n");
+                s->evaluate_tangent     = FaultSDFTangent;
+                printf("... Evaluated Tangent\n");
                 }
                 break;
             
@@ -222,7 +421,7 @@ PetscErrorCode evaluate_sdf(void *ctx, PetscReal coor[],PetscReal *phi)
 
   PetscFunctionReturn(0);
 }
-PetscErrorCode evaluate_grad_sdf(void *ctx,PetscReal coor[],PetscReal grad[])
+PetscErrorCode evaluate_grad_sdf(void *ctx, PetscReal coor[], PetscReal grad[])
 {
   PetscErrorCode ierr;
   SDF s = (SDF) ctx;

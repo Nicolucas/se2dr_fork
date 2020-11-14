@@ -1788,6 +1788,8 @@ PetscErrorCode FaultSDFInit_v2(SpecFECtx c)
   PetscReal       factor;
   PetscInt        factor_i;
   void * the_sdf;
+  int geometry_selection;
+  int HalfNumPoints;
   
   eldofs   = c->elbuf_dofs;
   elcoords = c->elbuf_coor;
@@ -1810,7 +1812,16 @@ PetscErrorCode FaultSDFInit_v2(SpecFECtx c)
   */ 
   PetscPrintf(PETSC_COMM_WORLD,"Start SDF Init: ");
   ierr = SDFCreate(&c->sdf);CHKERRQ(ierr); // Allocate the struct object in memory (Might not be necessary as the original structure CTX has already allocated)
-  ierr = SDFSetup(c->sdf,2,1);CHKERRQ(ierr); // Setup the type of SDF used (third argument of the function): 0-> Horizontal, 1-> Tilted, 2->Sigmoid TBA
+  geometry_selection = 2;// Setup the type of SDF used (third argument of the function): 0-> Horizontal, 1-> Tilted, 2->Sigmoid TBA
+  ierr = SDFSetup(c->sdf, 2, geometry_selection);CHKERRQ(ierr);// call of the setup function.
+
+  if (geometry_selection == 2)
+  {
+    ierr = PetscCalloc1(c->nqp*c->ne,&c->sdf->idxArray_ClosestFaultNode);CHKERRQ(ierr);
+    ierr = initializeZeroSetCurveFault(c->sdf);CHKERRQ(ierr);
+    HalfNumPoints = ((GeometryParams) c->sdf->data)->HalfNumPoints;
+  }
+
   the_sdf  = (void *)c->sdf;
 
   for (e=0; e<c->ne; e++) {
@@ -1839,7 +1850,14 @@ PetscErrorCode FaultSDFInit_v2(SpecFECtx c)
       
       coor_qp[0] = elcoords[2*q  ];
       coor_qp[1] = elcoords[2*q+1];
-      
+
+      //Populating the entire qp matrix with index directions of the nearest node on the fault, only for geometry type 2
+      if (geometry_selection == 2)
+      {
+        find_minimum_idx(coor_qp[0], coor_qp[1], c->sdf->xList, c->sdf->fxList, HalfNumPoints*2+1, &c->sdf->idxArray_ClosestFaultNode[e*c->nqp + q]);
+        c->sdf->curve_idx_carrier = c->sdf->idxArray_ClosestFaultNode[e * c->nqp + q];
+      }
+
       modify_stress_state = PETSC_FALSE;
       dr_celldata[q].eid[0] = -1;
       dr_celldata[q].eid[1] = -1;
@@ -2274,7 +2292,10 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
       coor_qp[1] = elcoords[2*q+1];
       
       inside_fault_region = PETSC_FALSE;
-      
+      if (c->sdf->type == 2)
+      {
+      c->sdf->curve_idx_carrier = c->sdf->idxArray_ClosestFaultNode[e*c->nqp + q];
+      }
       ierr = FaultSDFQuery(coor_qp,c->delta,(void *)c->sdf,&inside_fault_region);CHKERRQ(ierr);
       //if (fabs(x_cell[1]) > c->delta) { inside_fault_region = PETSC_FALSE; }
       
@@ -2605,7 +2626,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   PetscReal sigma_t_0 = 20.0 * 1.0e6;
   PetscReal sigma_n_1 = 40.0 * 1.0e6;
   PetscReal sigma_t_1 = 20.0 * 1.0e6;
-  PetscReal RotAngle = CONST_FAULT_ANGLE_DEG;
+  
   static PetscBool beenhere = PETSC_FALSE;
   static PetscReal gmin[3],gmax[3];
   PetscReal dx,dy;
@@ -2739,6 +2760,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       PetscBool sliding_active;
       PetscReal DistOnFault; /**Project coords onto fault to get friction in the case of tilting */
       PetscReal PhiCell;
+      PetscReal RotAngle = CONST_FAULT_ANGLE_DEG;
 
       dNidx = c->dN_dx[q];
       dNidy = c->dN_dy[q];
@@ -2843,7 +2865,12 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       //}
       
       inside_fault_region = PETSC_FALSE;
-      
+
+      if (c->sdf->type == 2)
+      {
+      c->sdf->curve_idx_carrier = c->sdf->idxArray_ClosestFaultNode[e*c->nqp + q];
+      getAngleFromDerivative(the_sdf , &RotAngle);
+      }      
       ierr = FaultSDFQuery(coor_qp,c->delta,the_sdf,&inside_fault_region);CHKERRQ(ierr);
       PhiCell = 0.0;
       ierr = evaluate_sdf(the_sdf, x_cell, &PhiCell);CHKERRQ(ierr);
@@ -2959,15 +2986,24 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
             //sigma_trial[TENS2D_XY] = tau;
       
             
-            if ( slip_rate < 0.0){
+            /*if ( slip_rate < 0.0){
               //ierr = PetscTanHWeighting( &sigma_t,  sigma_t, -tau, phi_p , 4.*(c->basisorder)/c->delta,  PetscAbsReal(0.999-1.0/c->basisorder)*c->delta); CHKERRQ(ierr);
               ierr = PetscTanHWeighting( &sigma_t,  sigma_t, -tau, phi_p , 4.*(c->basisorder)/c->delta,  0.65*c->delta); CHKERRQ(ierr);
             } else {
               //ierr = PetscTanHWeighting( &sigma_t,  sigma_t,  tau, phi_p , 4.*(c->basisorder)/c->delta,  PetscAbsReal(0.999-1.0/c->basisorder)*c->delta); CHKERRQ(ierr);
               ierr = PetscTanHWeighting( &sigma_t,  sigma_t,  tau, phi_p , 4.*(c->basisorder)/c->delta,  0.65*c->delta); CHKERRQ(ierr);
             }
-
             sigma_trial[TENS2D_XY] = sigma_t;
+            */
+
+            if ( slip_rate < 0.0)
+            {
+              sigma_trial[TENS2D_XY] = -tau;
+            } else {
+              sigma_trial[TENS2D_XY] = tau;
+            }
+
+            
 
 
             //printf("  sigma_xy %+1.8e\n",sigma_vec[TENS2D_XY]);
@@ -3249,7 +3285,10 @@ PetscErrorCode Update_StressGlut2d(SpecFECtx c,Vec u,Vec v,PetscReal dt)
       coor_qp[1] = elcoords[2*q+1];
       
       inside_fault_region = PETSC_FALSE;
-
+      if (c->sdf->type == 2)
+      {
+      c->sdf->curve_idx_carrier = c->sdf->idxArray_ClosestFaultNode[e*c->nqp + q];
+      }
       ierr = FaultSDFQuery(coor_qp,c->delta,(void *)c->sdf,&inside_fault_region);CHKERRQ(ierr);
       //if (fabs(x_cell[1]) > c->delta) { inside_fault_region = PETSC_FALSE; }
       
@@ -4557,7 +4596,7 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
     /* Compute f = -F^{int}( u_{n+1} ) */
     
     ierr = AssembleLinearForm_ElastoDynamics_StressGlut2d(ctx,u,v,dt,time, gamma,f);CHKERRQ(ierr);
-    printf("Estoy fuera de stressglut\n");
+
     /* Update force; F^{ext}_{n+1} = f + S(t_{n+1}) g(x) */
     ierr = VecAXPY(f,1.0,g);CHKERRQ(ierr);
     

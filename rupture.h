@@ -34,6 +34,13 @@ typedef struct _GeometryParams *GeometryParams;
 struct _GeometryParams {
   double angle;
   double radius;
+
+  //For the sigmoid
+  int HalfNumPoints;
+  double k;
+  double amp;
+  double xorigin;
+  double xend;
 };
 
 struct _SDF {
@@ -45,6 +52,11 @@ struct _SDF {
   PetscErrorCode (*evaluate_normal)(double*, void *, double*);
   PetscErrorCode (*evaluate_tangent)(double*, void *,double*);
   void (*evaluate_DistOnFault)(void *, double*, double*);
+
+  int *idxArray_ClosestFaultNode;
+  int curve_idx_carrier;
+  double *xList;
+  double *fxList;
 };
 
 PetscErrorCode SDFCreate(SDF*);
@@ -69,8 +81,19 @@ void tilted_sdf(void * ctx, double coor[], double *phi);
 void tilted_grad_sdf(void * ctx, double coor[], double grad[]);
 void Tilted_DistOnFault(void * ctx, double coor[], double *DistOnFault);
 
+//--- Sigmoid functions
+void Sigmoid_Function_map(double x, double *fx, double k, double amp);
+void DerSigmoid_Function_map(double x, double *fx, double k, double amp);
+void DistanceFunction(double x0, double y0, double x1, double y1, double * distVal);
+void DiscretizeFunction(double x[], double fx[], void* ctx);
+void find_minimum_idx(double coorx, double coory, double x[], double fx[], int NumPointsDiscreteCurve, int *idxCurve);
+PetscErrorCode initializeZeroSetCurveFault(SDF s);
+void sigmoid_sdf(void * ctx,  double coor[], double *phi);
+void sigmoid_grad_sdf(void * ctx, double coor[], double grad[]);
+void getAngleFromDerivative(void* ctx, double *angle);
+void Sigmoid_DistOnFault(void *ctx, double coor[],  double *DistOnFault);
 
-
+//--- Sigmoid functions End
 
 PetscErrorCode evaluate_sdf(void *ctx,PetscReal coor[],PetscReal *phi);
 PetscErrorCode evaluate_grad_sdf(void *ctx,PetscReal coor[],PetscReal grad[]);
