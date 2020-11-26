@@ -76,7 +76,6 @@ void SDFEvaluateNormal(double c[],SDF s,double n[])
         exit(1);
     }
     s->evaluate_normal(c,s,n);
-    PetscFunctionReturn(0);
 }
 
 void SDFEvaluateTangent(double c[],SDF s,double t[])
@@ -86,7 +85,6 @@ void SDFEvaluateTangent(double c[],SDF s,double t[])
         exit(1);
     }
     s->evaluate_tangent(c,s,t);
-    PetscFunctionReturn(0);
 }
 
 PetscErrorCode EvaluateDistOnFault(SDF s,double c[],double * distVal)
@@ -145,11 +143,21 @@ void Tilted_DistOnFault(void *ctx, double coor[],  double *DistOnFault)
   *DistOnFault = cos(GeoParamList->angle * M_PI/180.0) * coor[0] + sin(GeoParamList->angle* M_PI/180.0) * coor[1];
 }
 
+/**=============== TEST Function ==============*/
+void Sigmoid_Function_map(double x, double *fx, double k, double amp)
+{
+  *fx = 0.0;
+}
+
+void DerSigmoid_Function_map(double x, double *fx, double k, double amp)
+{
+  *fx = 0.0;
+}
 
 /**=============== Sigmoid Function ==============*/
 
 // Application of a sigmoid function dependant on a parameter k for values on the interval (-1,0) 
-void Sigmoid_Function_map(double x, double *fx, double k, double amp)
+/**void Sigmoid_Function_map(double x, double *fx, double k, double amp)
 {
   *fx = (x - x * k) / (k -fabs(x/amp) * 2.0 * k + 1.0);
 }
@@ -157,7 +165,7 @@ void Sigmoid_Function_map(double x, double *fx, double k, double amp)
 void DerSigmoid_Function_map(double x, double *fx, double k, double amp)
 {
   *fx = amp*(1 - k * k) / ((k - fabs(x) * 2.0 * k + 1.0)*(k - fabs(x) * 2.0 * k + 1.0));
-}
+}*/
 
 // Standard distance function using as input parameters the coordinates of two points
 void DistanceFunction(double x0, double y0, double x1, double y1, double * distVal)
