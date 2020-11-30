@@ -2880,12 +2880,19 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       //  printf("%+1.4e %+1.4e c11 %+1.4e 10x eta %+1.4e\n",coor_qp[0],coor_qp[1],c11,eta);
       //}
 
+      //Highlight locations within inside the fault region:
+      //if (inside_fault_region) {
+      //printf("[%+1.4e, %+1.4e, Dist, %+1.4e ],\n", coor_qp[0], coor_qp[1], PhiCell);
+      //}
+
 
       DistOnFault = 0.0;
       ierr = evaluate_DistOnFault_sdf(the_sdf, coor_qp, &DistOnFault);CHKERRQ(ierr);
-#if 1
+
+      if (c->sdf->type >0)
+      {
       MohrTranformSymmetricRot(RotAngle, &sigma_trial[TENS2D_XX], &sigma_trial[TENS2D_YY], &sigma_trial[TENS2D_XY]);
-#endif
+      }
       if (inside_fault_region) { /* add the initial stress state on fault */
         if (fabs(DistOnFault) < 1.5*1.0e3) {
           sigma_trial[TENS2D_XY] += sigma_t_1;
@@ -3095,9 +3102,10 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
         sigma_trial[TENS2D_XY] -= sigma_t_0;
         sigma_trial[TENS2D_YY] -= (-sigma_n_0); /* negative in compression */
       }
-#if 1
+      if (c->sdf->type >0)
+      {
       MohrTranformSymmetricRot(-RotAngle, &sigma_trial[TENS2D_XX], &sigma_trial[TENS2D_YY], &sigma_trial[TENS2D_XY]);
-#endif
+      }
 
       /* These components weren't modified in the horizontal fault case - but they might be in general */
       sigma_vec[TENS2D_XX] = sigma_trial[TENS2D_XX];
