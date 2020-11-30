@@ -291,7 +291,7 @@ void Sigmoid_DistOnFault(void *ctx, double coor[],  double *DistOnFault)
   //printf("%d\t",s->curve_idx_carrier);
   if (g->HalfNumPoints < s->curve_idx_carrier)
   {
-    for (idx = g->HalfNumPoints; idx <= 2 * g->HalfNumPoints ; idx++)
+    for (idx = g->HalfNumPoints; idx <= s->curve_idx_carrier ; idx++)
     { double LocalDist={0};
       DistanceFunction(s->xList[idx], s->fxList[idx], s->xList[idx+1], s->fxList[idx+1], &LocalDist);
       *DistOnFault += LocalDist;
@@ -299,7 +299,7 @@ void Sigmoid_DistOnFault(void *ctx, double coor[],  double *DistOnFault)
   }
   else if (g->HalfNumPoints > s->curve_idx_carrier)
   {
-    for (idx = g->HalfNumPoints; idx > 1 ; idx--)
+    for (idx = g->HalfNumPoints; idx >= s->curve_idx_carrier ; idx--)
     { double LocalDist={0};
       DistanceFunction(s->xList[idx], s->fxList[idx], s->xList[idx-1], s->fxList[idx-1], &LocalDist);
       *DistOnFault += LocalDist;
