@@ -143,29 +143,19 @@ void Tilted_DistOnFault(void *ctx, double coor[],  double *DistOnFault)
   *DistOnFault = cos(GeoParamList->angle * M_PI/180.0) * coor[0] + sin(GeoParamList->angle* M_PI/180.0) * coor[1];
 }
 
-/**=============== TEST Function ==============*/
-void Sigmoid_Function_map(double x, double *fx, double k, double amp)
-{
-  *fx = 0.0;
-}
-
-void DerSigmoid_Function_map(double x, double *fx, double k, double amp)
-{
-  *fx = 0.0;
-}
-
 /**=============== Sigmoid Function ==============*/
 
 // Application of a sigmoid function dependant on a parameter k for values on the interval (-1,0) 
-/**void Sigmoid_Function_map(double x, double *fx, double k, double amp)
+
+void Sigmoid_Function_map(double x, double *fx, double k, double amp)
 {
-  *fx = (x - x * k) / (k -fabs(x/amp) * 2.0 * k + 1.0);
+  *fx = amp * (x - x * k) / (k - fabs(x) * 2.0 * k + 1.0);
 }
 
 void DerSigmoid_Function_map(double x, double *fx, double k, double amp)
 {
-  *fx = amp*(1 - k * k) / ((k - fabs(x) * 2.0 * k + 1.0)*(k - fabs(x) * 2.0 * k + 1.0));
-}*/
+  *fx = amp * (1 - k * k) / ((k - fabs(x) * 2.0 * k + 1.0)*(k - fabs(x) * 2.0 * k + 1.0));
+}
 
 // Standard distance function using as input parameters the coordinates of two points
 void DistanceFunction(double x0, double y0, double x1, double y1, double * distVal)
@@ -244,10 +234,8 @@ void sigmoid_sdf(void * ctx,  double coor[], double *phi)
   SDF s = (SDF) ctx;
   DistanceFunction(coor[0], coor[1], s->xList[s->curve_idx_carrier], s->fxList[s->curve_idx_carrier], &MagnitudePhi);
 
-  GeometryParams g = (GeometryParams) s->data;
-  Sigmoid_Function_map( s->xList[s->curve_idx_carrier], &yValue, g->k, g->amp);
   
-  if (s->fxList[s->curve_idx_carrier]<yValue)
+  if (s->fxList[s->curve_idx_carrier] > coor[1])
   {
     *phi = -MagnitudePhi;
   }
@@ -291,7 +279,7 @@ void getAngleFromDerivative(void* ctx, double *angle)
   k = g->k;
 
   DerSigmoid_Function_map(s->xList[s->curve_idx_carrier], &fPrimeX, k, amp);
-  *angle = atan(fPrimeX);
+  *angle = atan(fPrimeX)* 180.0 / M_PI;
 }
 
 void Sigmoid_DistOnFault(void *ctx, double coor[],  double *DistOnFault)
@@ -381,7 +369,7 @@ PetscErrorCode SDFSetup(SDF s,int dim,int type)
                 {
                 GeometryParams g;
                 ierr = GeoParamsCreate(&g);CHKERRQ(ierr);
-                printf("Sigmoid Fault ");
+                printf("Sigmoid Fault \n");
                 g->HalfNumPoints = 3000; 
                 g->k             = -0.0002;
                 g->amp           = 2.0;
