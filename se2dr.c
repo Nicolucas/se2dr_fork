@@ -2993,23 +2993,30 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
             //sigma_trial[TENS2D_XY] = tau;
       
             
-            /*if ( slip_rate < 0.0){
-              //ierr = PetscTanHWeighting( &sigma_t,  sigma_t, -tau, phi_p , 4.*(c->basisorder)/c->delta,  PetscAbsReal(0.999-1.0/c->basisorder)*c->delta); CHKERRQ(ierr);
-              ierr = PetscTanHWeighting( &sigma_t,  sigma_t, -tau, phi_p , 4.*(c->basisorder)/c->delta,  0.65*c->delta); CHKERRQ(ierr);
-            } else {
-              //ierr = PetscTanHWeighting( &sigma_t,  sigma_t,  tau, phi_p , 4.*(c->basisorder)/c->delta,  PetscAbsReal(0.999-1.0/c->basisorder)*c->delta); CHKERRQ(ierr);
-              ierr = PetscTanHWeighting( &sigma_t,  sigma_t,  tau, phi_p , 4.*(c->basisorder)/c->delta,  0.65*c->delta); CHKERRQ(ierr);
-            }
-            sigma_trial[TENS2D_XY] = sigma_t;
-            */
-
-            if ( slip_rate < 0.0)
+            if (c->basisorder == 1)
             {
-              sigma_trial[TENS2D_XY] = -tau;
-            } else {
-              sigma_trial[TENS2D_XY] = tau;
+              if ( slip_rate < 0.0)
+              {
+                sigma_trial[TENS2D_XY] = -tau;
+              } else {
+                sigma_trial[TENS2D_XY] = tau;
+              }
+            }else{
+
+              if ( slip_rate < 0.0)
+              {
+                //ierr = PetscTanHWeighting( &sigma_t,  sigma_t, -tau, phi_p , 4.*(c->basisorder)/c->delta,  PetscAbsReal(0.999-1.0/c->basisorder)*c->delta); CHKERRQ(ierr);
+                ierr = PetscTanHWeighting( &sigma_t,  sigma_t, -tau, phi_p , 4.*(c->basisorder)/c->delta,  0.65*c->delta); CHKERRQ(ierr);
+              } else {
+                //ierr = PetscTanHWeighting( &sigma_t,  sigma_t,  tau, phi_p , 4.*(c->basisorder)/c->delta,  PetscAbsReal(0.999-1.0/c->basisorder)*c->delta); CHKERRQ(ierr);
+                ierr = PetscTanHWeighting( &sigma_t,  sigma_t,  tau, phi_p , 4.*(c->basisorder)/c->delta,  0.65*c->delta); CHKERRQ(ierr);
+              }
+              sigma_trial[TENS2D_XY] = sigma_t;
             }
 
+            /**
+            
+            */
             
 
 
