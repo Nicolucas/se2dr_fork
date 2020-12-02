@@ -199,7 +199,7 @@ void find_minimum_idx(double coorx, double coory, double x[], double fx[], int N
   int idx = -1;
   minimum = 1.0e200;
 
-  for (int i=0; i <= NumPointsDiscreteCurve; i++)
+  for (int i=0; i < NumPointsDiscreteCurve; i++)
   {
     DistanceFunction(coorx, coory, x[i], fx[i], &DistVal);
     if (DistVal < minimum)
@@ -289,19 +289,19 @@ void Sigmoid_DistOnFault(void *ctx, double coor[],  double *DistOnFault)
   GeometryParams g = (GeometryParams) s->data;
 
   //printf("%d\t",s->curve_idx_carrier);
-  if (g->HalfNumPoints < s->curve_idx_carrier)
+  if (s->curve_idx_carrier > g->HalfNumPoints)
   {
-    for (idx = g->HalfNumPoints; idx <= s->curve_idx_carrier ; idx++)
-    { double LocalDist={0};
+    for (idx = g->HalfNumPoints; idx < s->curve_idx_carrier ; idx++)
+    { double LocalDist = 0.0;
       DistanceFunction(s->xList[idx], s->fxList[idx], s->xList[idx+1], s->fxList[idx+1], &LocalDist);
       *DistOnFault += LocalDist;
     }
   }
-  else if (g->HalfNumPoints > s->curve_idx_carrier)
+  else if (s->curve_idx_carrier < g->HalfNumPoints)
   {
-    for (idx = g->HalfNumPoints; idx >= s->curve_idx_carrier ; idx--)
-    { double LocalDist={0};
-      DistanceFunction(s->xList[idx], s->fxList[idx], s->xList[idx-1], s->fxList[idx-1], &LocalDist);
+    for (idx = s->curve_idx_carrier; idx < g->HalfNumPoints ; idx++)
+    { double LocalDist = 0.0;
+      DistanceFunction(s->xList[idx], s->fxList[idx], s->xList[idx+1], s->fxList[idx+1], &LocalDist);
       *DistOnFault += LocalDist;
     }
   }
@@ -453,8 +453,8 @@ void MohrTranformSymmetricRot(PetscReal RotAngleDeg, PetscReal *s_xx, PetscReal 
 
 PetscErrorCode FaultSDFQuery(PetscReal coor[],PetscReal delta,void *ctx,PetscBool *inside)
 {
-  PetscReal phi;
-  PetscReal DistOnFault;
+  PetscReal phi = 1.0e32;
+  PetscReal DistOnFault = 1.0e32;
   PetscReal normal[2];
   PetscErrorCode ierr;
   

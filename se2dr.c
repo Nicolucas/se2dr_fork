@@ -1826,7 +1826,7 @@ PetscErrorCode FaultSDFInit_v2(SpecFECtx c)
 
   for (e=0; e<c->ne; e++) {
      PetscReal PhiCell = 0.0;
-     PetscReal xcell[] = {0.0, 0.0}
+     PetscReal xcell[] = {0.0, 0.0};
      
     /* get element -> node map */
     elnidx = &element[nbasis*e];
@@ -1871,8 +1871,8 @@ PetscErrorCode FaultSDFInit_v2(SpecFECtx c)
       dr_celldata[q].eid[1] = -1;
       ierr = FaultSDFQuery(coor_qp,c->delta,the_sdf,&modify_stress_state);CHKERRQ(ierr);
       
-      ierr = evaluate_sdf(c->sdf, xcell, &PhiCell);CHKERRQ(ierr);
-      if (fabs(PhiCell) > c->delta) { modify_stress_state = PETSC_FALSE; }      
+      //ierr = evaluate_sdf(c->sdf, xcell, &PhiCell);CHKERRQ(ierr);
+      //if (fabs(PhiCell) > c->delta) { modify_stress_state = PETSC_FALSE; }      
 
       if (modify_stress_state) {
         PetscReal x_plus[2],x_minus[2];
@@ -2885,8 +2885,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       }      
       ierr = FaultSDFQuery(coor_qp,c->delta,the_sdf,&inside_fault_region);CHKERRQ(ierr);
       PhiCell = 0.0;
-      ierr = evaluate_sdf(the_sdf, x_cell, &PhiCell);CHKERRQ(ierr);
-      if (fabs(PhiCell) > c->delta) { inside_fault_region = PETSC_FALSE; }
+      //ierr = evaluate_sdf(the_sdf, x_cell, &PhiCell);CHKERRQ(ierr);
+      //if (fabs(PhiCell) > c->delta) { inside_fault_region = PETSC_FALSE; }
       
       //if (inside_fault_region) {
       //  printf("%+1.4e %+1.4e c11 %+1.4e 10x eta %+1.4e\n",coor_qp[0],coor_qp[1],c11,eta);
@@ -2925,7 +2925,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
         PetscReal sigma_n,sigma_t,phi_p;
         PetscReal e_inelastic_xy = 0.0;
         PetscReal tau,mu_s,mu_d,D_c,mu_friction,T;
-        
+        //printf(">>[e %d , q %d] x_qp %+1.4e , %+1.4e\n",e,q,coor_qp[0],coor_qp[1]);
         ierr = evaluate_sdf(the_sdf,coor_qp,&phi_p);CHKERRQ(ierr);
         
         ierr = FaultSDFGetPlusMinusCoor(coor_qp,c->delta,the_sdf,x_plus,x_minus);CHKERRQ(ierr);
