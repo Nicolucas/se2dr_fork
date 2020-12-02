@@ -1825,6 +1825,9 @@ PetscErrorCode FaultSDFInit_v2(SpecFECtx c)
   the_sdf  = (void *)c->sdf;
 
   for (e=0; e<c->ne; e++) {
+     PetscReal PhiCell = 0.0;
+     PetscReal xcell[] = {0.0, 0.0}
+     
     /* get element -> node map */
     elnidx = &element[nbasis*e];
     
@@ -1840,7 +1843,12 @@ PetscErrorCode FaultSDFInit_v2(SpecFECtx c)
       PetscInt nidx = elnidx[i];
       elcoords[2*i  ] = LA_coor[2*nidx  ];
       elcoords[2*i+1] = LA_coor[2*nidx+1];
+      
+      xcell[0] += elcoords[2*i  ];
+      xcell[1] += elcoords[2*i+1];
     }
+    xcell[0] = xcell[0] / ((PetscReal)nbasis);
+    xcell[1] = xcell[1] / ((PetscReal)nbasis);
     
     ierr = SpecFECtxGetDRCellData(c,e,&dr_celldata);CHKERRQ(ierr);
     
@@ -1862,6 +1870,10 @@ PetscErrorCode FaultSDFInit_v2(SpecFECtx c)
       dr_celldata[q].eid[0] = -1;
       dr_celldata[q].eid[1] = -1;
       ierr = FaultSDFQuery(coor_qp,c->delta,the_sdf,&modify_stress_state);CHKERRQ(ierr);
+      
+      ierr = evaluate_sdf(c->sdf, xcell, &PhiCell);CHKERRQ(ierr);
+      if (fabs(PhiCell) > c->delta) { modify_stress_state = PETSC_FALSE; }      
+
       if (modify_stress_state) {
         PetscReal x_plus[2],x_minus[2];
         
