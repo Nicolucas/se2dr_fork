@@ -2873,7 +2873,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       coor_qp[1] = elcoords[2*q+1];
 
       //if (fabs(coor_qp[0]) < 1000.0 && fabs(coor_qp[1]) < 1000.0) {
-      //  printf("edot %+1.4e %+1.4e %+1.4e : eta %+1.4e\n",edot_vec[0],edot_vec[1],edot_vec[2],eta);
+      //printf("edot %+1.4e %+1.4e %+1.4e : eta %+1.4e\n",edot_vec[0],edot_vec[1],edot_vec[2],eta);
       //}
       
       inside_fault_region = PETSC_FALSE;
@@ -2885,7 +2885,11 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       }      
       ierr = FaultSDFQuery(coor_qp,c->delta,the_sdf,&inside_fault_region);CHKERRQ(ierr);
       PhiCell = 0.0;
-      //ierr = evaluate_sdf(the_sdf, x_cell, &PhiCell);CHKERRQ(ierr);
+
+      if (c->sdf->type == 2)
+      {
+      ierr = evaluate_sdf(the_sdf, x_cell, &PhiCell);CHKERRQ(ierr);
+      
       //if (fabs(PhiCell) > c->delta) { inside_fault_region = PETSC_FALSE; }
       
       //if (inside_fault_region) {
@@ -2896,6 +2900,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       //if (inside_fault_region) {
       //printf("[%+1.4e, %+1.4e, Dist, %+1.4e ],\n", coor_qp[0], coor_qp[1], PhiCell);
       //}
+      }
 
 
       DistOnFault = 0.0;
