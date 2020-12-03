@@ -287,6 +287,7 @@ void Sigmoid_DistOnFault(void *ctx, double coor[],  double *DistOnFault)
   int idx;
   SDF s = (SDF) ctx;
   GeometryParams g = (GeometryParams) s->data;
+  *DistOnFault = 0.0;
 
   //printf("%d\t",s->curve_idx_carrier);
   if (s->curve_idx_carrier > g->HalfNumPoints)
@@ -461,6 +462,7 @@ PetscErrorCode FaultSDFQuery(PetscReal coor[],PetscReal delta,void *ctx,PetscBoo
   *inside = PETSC_FALSE;
   ierr = evaluate_sdf(ctx,coor,&phi);CHKERRQ(ierr);
   ierr = evaluate_DistOnFault_sdf(ctx, coor, &DistOnFault);CHKERRQ(ierr);
+  //printf("DistOnFault, %+1.4e, Phi: %+1.4e \n", DistOnFault, phi);
 
   if (PetscAbsReal(DistOnFault) >  10.0e3) { PetscFunctionReturn(0); }
   

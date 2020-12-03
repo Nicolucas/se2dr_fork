@@ -2881,9 +2881,9 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       if (c->sdf->type == 2)
       {
       c->sdf->curve_idx_carrier = c->sdf->idxArray_ClosestFaultNode[e*c->nqp + q];
-      getAngleFromDerivative(the_sdf , &RotAngle);
+      getAngleFromDerivative(the_sdf, &RotAngle);
       }      
-      ierr = FaultSDFQuery(coor_qp,c->delta,the_sdf,&inside_fault_region);CHKERRQ(ierr);
+      ierr = FaultSDFQuery(coor_qp, c->delta, the_sdf, &inside_fault_region);CHKERRQ(ierr);
       PhiCell = 0.0;
 
       if (c->sdf->type == 2)
@@ -2906,7 +2906,10 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       DistOnFault = 0.0;
       ierr = evaluate_DistOnFault_sdf(the_sdf, coor_qp, &DistOnFault);CHKERRQ(ierr);
 
-      if (c->sdf->type >0)
+      //printf("Type, %d,\n", c->sdf->type);
+      //printf("[%+1.4e, %+1.4e, SDF: %+1.4e, DistOnFault: %+1.4e ],\n", coor_qp[0], coor_qp[1], PhiCell, DistOnFault);
+
+      if (c->sdf->type > 0)
       {
       MohrTranformSymmetricRot(RotAngle, &sigma_trial[TENS2D_XX], &sigma_trial[TENS2D_YY], &sigma_trial[TENS2D_XY]);
       }
