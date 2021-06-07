@@ -1727,6 +1727,226 @@ PetscErrorCode FaultSDFTabulateInterpolation_v1(SpecFECtx c,const PetscReal LA_v
 }
 #endif
 
+/**
+ * Here we want to create several functions that project the stress field in a C0 element. 
+ * The way it is going to be done is via identifiying repeated nodes on boundaries and corners and average the stresses
+ * at repeated locations
+ * After identifiying the repeated nodes in a similar manner as in Basis at location, 
+ * the stress computation would be the same as in the function stress at location. Then the stress is averaged 
+ * 
+ * 1> Function that identifies if a point is at a boundary of corner. otw is the same as in Basisatlocation
+ * 2> Use the id and qp value to calculate the basis at location from each point
+ * 3> Havin the basis at location, calculate the stress at location
+ * 4> Average the stresses for the corners and the boundaries
+ * 
+ * Q: Should I extract the stress from the continuous stress field at an arbitrary point or
+ * only at the repeated QP?
+ * Q: Should I average the displacement field or the complete stress field 
+ * (the difference resides in averaging the damping term that depends on the velocity field)
+ * A: I could average the stress field, apply the averaging before and after adding the damping term
+ * 
+ * Q: Should I apply this continuous stress extraction for the yielding stress only, within the fault zone
+ * or to all the stress everywhere?
+ * A: Im applying this to the stresses inside of the fault zone
+ * 
+ * A proper thing to do would be to average it from the displacement fields
+ * averaging the velocity field for the damping parameter could be done and undone with a single line of code
+ * Also, if done in general, it can be applied to an arbitrary location, and
+ * the qp (slower due to not saving on operations)
+ */
+
+/**
+ * 1. Identify element and qp id(s) for the inner, boundary, and corner cases
+ */
+PetscErrorCode IdentifyLocationType(SpecFECtx c, PetscReal xr[], PetscInt *_FlagRepCase, PetscInt eidVec[], PetscInt eiVec[], PetscInt ejVec[])
+{
+  static PetscReal      gmin[3],gmax[3];
+  PetscErrorCode ierr;
+  PetscReal      dx,dy,xi,eta,x0,y0;
+  PetscInt       ei,ej;
+  PetscInt       FlagRepCase = 1;
+  
+
+  ierr = DMGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
+
+  if (xr[0] < gmin[0]){exit(1);}
+  if (xr[0] > gmax[0]){exit(1);}
+  if (xr[1] < gmin[1]){exit(1);}
+  if (xr[1] > gmax[1]){exit(1);}//abort
+
+  /* get containing element wrt the Global bounding box*/
+  dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
+  ei = ((PetscInt)(xr[0] - gmin[0])/dx); // As a byproduct of this, I'll never have a residual of 1
+  if (ei==c->mx_g){
+    ei--;
+  }
+
+  dy = (gmax[1] - gmin[1])/((PetscReal)c->my_g);
+  ej = ((PetscInt)(xr[1] - gmin[1])/dy); 
+  if (ej==c->my_g){
+    ej--;
+  }
+
+  x0 = gmin[0] + ei*dx; 
+  y0 = gmin[1] + ej*dy;
+  /*Get containing element wrt local bounding box*/
+  // (xi - (-1))/2 = (x - x0)/dx
+  xi = 2.0*(xr[0] - x0)/dx - 1.0;
+  eta = 2.0*(xr[1] - y0)/dy - 1.0;
+
+  if ((xi+1.0 < 1e-10)&&(ei>0)){
+    FlagRepCase = FlagRepCase * 2;
+    eiVec[1] = ei;
+    eiVec[3] = ei;
+    ei--;
+  }
+  eiVec[0] = ei;
+
+
+  if ((eta+1.0 < 1e-10)&&(ej>0)){
+    FlagRepCase = FlagRepCase * 2;
+    ejVec[2] = ej;
+    ejVec[3] = ej;
+    ej--;
+  }
+  ejVec[0] = ej;
+
+
+  eidVec[0] = eiVec[0] + ejVec[0] * c->mx;
+
+  if (FlagRepCase == 4){
+    ejVec[1] = ejVec[0]; // Not -1 anymore
+    eiVec[2] = eiVec[0]; // Not -1 anymore
+
+    eidVec[1] = eiVec[1] + ejVec[1] * c->mx;
+    eidVec[2] = eiVec[2] + ejVec[2] * c->mx;
+    eidVec[3] = eiVec[3] + ejVec[3] * c->mx;
+
+  } else if (FlagRepCase == 2){
+
+    if (ejVec[1]==-1){
+      eidVec[1] = eiVec[1] + ejVec[0] * c->mx;
+    } else {
+      eidVec[1] = eiVec[0] + ejVec[2] * c->mx;
+    }
+
+  }
+  // if ((xr[0] >99.0) & (xr[0] < 101.0) ){
+  //   printf(">[xi %+1.4e, %+1.4e] - Num repeated: %d > \n",xr[0],xr[1], FlagRepCase);
+  //   for (int idxPrint=0; idxPrint<FlagRepCase; idxPrint++){
+  //     printf("ei %d, ej: %d\n", eiVec[idxPrint], ejVec[idxPrint] );
+  //   }
+  //   printf("=========================\n");
+  // }
+  *_FlagRepCase = FlagRepCase;
+   
+  PetscFunctionReturn(0);
+} //IdentifyLocationType: end
+/**
+ * 2. Compute the basis functions at a given location with given element index
+ */
+PetscErrorCode ComputeBasisAtLocWitheiej(SpecFECtx c, PetscReal xr[],PetscInt ei, PetscInt ej, PetscReal **_N){
+    PetscInt       nbasis,i,j,k;
+    PetscReal      **N_s1,**N_s2,xi,eta,x0,y0;
+    PetscReal      gmin[3],gmax[3],dx,dy;
+    PetscReal      N[400];
+    PetscErrorCode ierr;
+
+    ierr = DMGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
+    dx = (gmax[0] - gmin[0])/((PetscReal)c->mx_g);
+    dy = (gmax[1] - gmin[1])/((PetscReal)c->my_g);
+
+    x0 = gmin[0] + ei*dx; /* todo - needs to be sub-domain gmin */
+    y0 = gmin[1] + ej*dy;
+    
+    // (xi - (-1))/2 = (x - x0)/dx
+    xi = 2.0*(xr[0] - x0)/dx - 1.0;
+    eta = 2.0*(xr[1] - y0)/dy - 1.0;
+    
+    /* compute basis */
+    ierr = TabulateBasis1d_CLEGENDRE(1,&xi,c->basisorder,&nbasis,&N_s1);CHKERRQ(ierr);
+    ierr = TabulateBasis1d_CLEGENDRE(1,&eta,c->basisorder,&nbasis,&N_s2);CHKERRQ(ierr);
+    
+    k = 0;
+    for (j=0; j<c->npe_1d; j++) {
+      for (i=0; i<c->npe_1d; i++) {
+        N[k] = N_s1[0][i] * N_s2[0][j];
+        k++;
+      }
+    }
+    
+    ierr = PetscFree(N_s1[0]);CHKERRQ(ierr);
+    ierr = PetscFree(N_s1);CHKERRQ(ierr);
+    ierr = PetscFree(N_s2[0]);CHKERRQ(ierr);
+    ierr = PetscFree(N_s2);CHKERRQ(ierr);
+
+    *_N = N;
+    PetscFunctionReturn(0);
+  }
+
+/**
+ * 3. Calculate the average of a field for a location, and average field values at the borders of an element
+ */
+PetscErrorCode FieldAvgElementBoundaries(SpecFECtx c, PetscReal xr[], const PetscReal *LA_f, PetscReal *fx, PetscReal *fy){
+  PetscErrorCode ierr;
+  PetscInt FlagRepCase;
+  PetscInt eiVec[] = {-1,-1,-1,-1}, ejVec[] = {-1,-1,-1,-1}, eidVec[] = {-1,-1,-1,-1};
+
+  PetscInt *elnidx, *element;
+
+  ierr = IdentifyLocationType(c, xr,  &FlagRepCase,  eidVec,  eiVec,  ejVec); CHKERRQ(ierr);
+
+  element  = c->element;
+  // if ((xr[0] >99.0) & (xr[0] < 101.0) ){
+  //   int idxPrint;
+  //   printf(">[xi %+1.4e, %+1.4e] - Num repeated: %d > \n",xr[0],xr[1], FlagRepCase);
+  //   for (idxPrint=0; idxPrint < 4; idxPrint++){
+  //     printf("ei %d, ej: %d\n", eiVec[idxPrint], ejVec[idxPrint] );
+  //   }
+  // }
+
+  /** The averaging of a field over the repeated location occurs here*/
+  for (int i_rep = 0; i_rep < FlagRepCase; i_rep ++){
+    PetscReal ffx = 0.0;
+    PetscReal ffy = 0.0;
+    PetscReal *N;
+    PetscReal ei,ej;
+
+    ei = eiVec[i_rep];
+    ej = ejVec[i_rep];
+
+    if ((FlagRepCase == 2) && (i_rep == 1)){
+      if (ej==-1){
+        ei = eiVec[1];
+        ej = ejVec[0];
+      } else {
+        ei = eiVec[0];
+        ej = ejVec[2];
+      }
+    }
+
+    ierr = ComputeBasisAtLocWitheiej(c, xr, ei, ej, &N);CHKERRQ(ierr);
+    
+    elnidx = &element[c->npe*eidVec[i_rep]];
+    for (int k=0; k<c->npe; k++){
+      PetscInt nidx = elnidx[k];
+      
+      ffx += N[k] * LA_f[2*nidx  ];
+      ffy += N[k] * LA_f[2*nidx+1];
+    }
+    *fx += ffx/FlagRepCase;
+    *fy += ffy/FlagRepCase;
+  }
+  // Printing Displacement components
+  // if ((xr[0] >350.0) & (xr[0] < 401.0) ){
+  //   printf(">[xi %+1.4e, %+1.4e] - Num repeated: %d > ",xr[0],xr[1], FlagRepCase);
+  //   printf("ux %+1.4e, uy: %+1.4e\n", *fx, *fy );
+  // }
+
+  PetscFunctionReturn(0);
+}
+
+
 PetscErrorCode PointLocation_v2(SpecFECtx c,const PetscReal xr[],PetscInt *_eid,PetscReal **N1,PetscReal **N2)
 {
   static PetscBool beenhere = PETSC_FALSE;
@@ -2211,27 +2431,6 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
     celldata = &c->cell_data[e];
     
     ierr = SpecFECtxGetDRCellData(c,e,&dr_celldata);CHKERRQ(ierr);
-    
-
-    
-    for (q=0; q<c->nqp; q++) {
-      PetscReal *dNidx,*dNidy;
-      
-      dNidx = c->dN_dx[q];
-      dNidy = c->dN_dy[q];
-      
-      gradv[0] = gradv[1] = gradv[2] = gradv[3] = 0.0;
-      for (i=0; i<nbasis; i++) {
-        gradv[0] += dNidx[i] * vx[i];
-        gradv[1] += dNidy[i] * vx[i];
-        gradv[2] += dNidx[i] * vy[i];
-        gradv[3] += dNidy[i] * vy[i];
-      }
-      gradv_q[q][0] = gradv[0];
-      gradv_q[q][1] = gradv[1];
-      gradv_q[q][2] = gradv[2];
-      gradv_q[q][3] = gradv[3];
-    }
 
     
     for (q=0; q<c->nqp; q++) {
@@ -2244,7 +2443,9 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
       
       dNidx = c->dN_dx[q];
       dNidy = c->dN_dy[q];
-      
+
+      coor_qp[0] = elcoords[2*q  ];
+      coor_qp[1] = elcoords[2*q+1];
       /* compute strain @ quadrature point */
       /*
        e = Bu = [ d/dx  0    ][ u v ]^T
@@ -2253,23 +2454,11 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
        */
       e_vec[0] = e_vec[1] = e_vec[2] = 0.0;
       for (i=0; i<nbasis; i++) {
+        ierr = FieldAvgElementBoundaries(c, coor_qp, LA_u, &ux[i], &uy[i]);CHKERRQ(ierr);
+
         e_vec[0] += dNidx[i] * ux[i];
         e_vec[1] += dNidy[i] * uy[i];
         e_vec[2] += (dNidx[i] * uy[i] + dNidy[i] * ux[i]);
-      }
-
-      gradu[0] = gradu[1] = gradu[2] = gradu[3] = 0.0;
-      gradv[0] = gradv[1] = gradv[2] = gradv[3] = 0.0;
-      for (i=0; i<nbasis; i++) {
-        gradu[0] += dNidx[i] * ux[i];
-        gradu[1] += dNidy[i] * ux[i];
-        gradu[2] += dNidx[i] * uy[i];
-        gradu[3] += dNidy[i] * uy[i];
-        
-        gradv[0] += dNidx[i] * vx[i];
-        gradv[1] += dNidy[i] * vx[i];
-        gradv[2] += dNidx[i] * vy[i];
-        gradv[3] += dNidy[i] * vy[i];
       }
 
       /* evaluate constitutive model */
@@ -2300,8 +2489,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
       sigma_trial[TENS2D_XY] = sigma_vec[TENS2D_XY];
       
       
-      coor_qp[0] = elcoords[2*q  ];
-      coor_qp[1] = elcoords[2*q+1];
+      
       
       inside_fault_region = PETSC_FALSE;
       if (c->sdf->type == 2)
