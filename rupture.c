@@ -492,8 +492,8 @@ PetscErrorCode FaultSDFTangent(PetscReal coor[],void *ctx,PetscReal t[])
   PetscErrorCode ierr;
   ierr = evaluate_grad_sdf(ctx,coor,gradphi);CHKERRQ(ierr);
   mag = sqrt(gradphi[0]*gradphi[0] + gradphi[1]*gradphi[1]);
-  t[0] = -gradphi[1] / mag;
-  t[1] =  gradphi[0] / mag;
+  t[0] =  gradphi[1] / mag;
+  t[1] = -gradphi[0] / mag;
   
   PetscFunctionReturn(0);
 }
