@@ -2852,9 +2852,9 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       sigma_vec[TENS2D_YY] += c21 * edot_vec[0] + c22 * edot_vec[1];
       sigma_vec[TENS2D_XY] += c33 * edot_vec[2];
       
-      c->sigma[e*(c->npe * 3) + q*(3 + TENS2D_XX)] = sigma_vec[TENS2D_XX];
-      c->sigma[e*(c->npe * 3) + q*(3 + TENS2D_YY)] = sigma_vec[TENS2D_YY];
-      c->sigma[e*(c->npe * 3) + q*(3 + TENS2D_XY)] = sigma_vec[TENS2D_XY];
+      c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XX] = sigma_vec[TENS2D_XX];
+      c->sigma[e*(c->npe * 3) + q*3 + TENS2D_YY] = sigma_vec[TENS2D_YY];
+      c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XY] = sigma_vec[TENS2D_XY];
     }
   }
   
@@ -2937,9 +2937,9 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
 
       mu_qp     = celldata->mu;
       
-      sigma_vec[TENS2D_XX] = c->sigma[e*(c->npe * 3) + q*(3 + TENS2D_XX)];
-      sigma_vec[TENS2D_YY] = c->sigma[e*(c->npe * 3) + q*(3 + TENS2D_YY)];
-      sigma_vec[TENS2D_XY] = c->sigma[e*(c->npe * 3) + q*(3 + TENS2D_XY)];
+      sigma_vec[TENS2D_XX] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XX];
+      sigma_vec[TENS2D_YY] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_YY];
+      sigma_vec[TENS2D_XY] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XY];
 
       sigma_trial[TENS2D_XX] = sigma_vec[TENS2D_XX];
       sigma_trial[TENS2D_YY] = sigma_vec[TENS2D_YY];
