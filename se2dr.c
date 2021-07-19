@@ -2679,7 +2679,6 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
 {
   PetscErrorCode ierr;
   PetscInt  e,nqp,q,i,nbasis,ndof;
-  PetscReal e_vec[3],edot_vec[3],sigma_vec[3],sigma_trial[3];
   PetscInt  *element,*elnidx,*eldofs;
   PetscReal *fe,*ux,*uy,*vx,*vy,*elcoords,detJ,*fieldU,*fieldV;
   Vec       coor,ul,vl,fl;
@@ -2693,12 +2692,6 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   PetscReal sigma_n_1 = 40.0 * 1.0e6;
   PetscReal sigma_t_1 = 20.0 * 1.0e6;
   
-  static PetscBool beenhere = PETSC_FALSE;
-  static PetscReal gmin[3],gmax[3];
-  
-
-  ierr = DMGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
-
   
   ierr = VecZeroEntries(F);CHKERRQ(ierr);
   
@@ -2739,9 +2732,9 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   for (e=0; e<c->ne; e++) {
     ierr = SpecFECtxGetDRCellData(c,e,&dr_celldata);CHKERRQ(ierr);
   }
-  
+
+  /* compute and stress stress */
   for (e=0; e<c->ne; e++) {
-    PetscReal x_cell[] = {0,0};
     
     /* get element -> node map */
     elnidx = &element[nbasis*e];
@@ -2779,54 +2772,36 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
                                                   c->npe_1d,c->dN_dxi,c->dN_deta,
                                                   c->dN_dx,c->dN_dy);
     
-    ierr = PetscMemzero(fe,sizeof(PetscReal)*nbasis*ndof);CHKERRQ(ierr);
-    
     /* get access to element->quadrature points */
     celldata = &c->cell_data[e];
     ierr = SpecFECtxGetDRCellData(c,e,&dr_celldata);CHKERRQ(ierr);
     
     
     for (q=0; q<c->nqp; q++) {
-      PetscReal fac;
       PetscReal c11,c12,c21,c22,c33,lambda_qp,mu_qp;
       PetscReal *dNidx,*dNidy;
-      PetscReal coor_qp[2];
-      PetscBool inside_fault_region;
-      PetscBool sliding_active;
-      PetscReal DistOnFault; /**Project coords onto fault to get friction in the case of tilting */
-      PetscReal PhiCell;
-      PetscReal RotAngle = CONST_FAULT_ANGLE_DEG;
-
+      PetscReal e_vec[]={0,0,0},edot_vec[]={0,0,0},sigma_vec[]={0,0,0};
+      
       dNidx = c->dN_dx[q];
       dNidy = c->dN_dy[q];
       
       /* compute strain @ quadrature point */
       /*
        e = Bu = [ d/dx  0    ][ u v ]^T
-       [ 0     d/dy ]
-       [ d/dy  d/dx ]
+                [ 0     d/dy ]
+                [ d/dy  d/dx ]
        */
-      e_vec[0] = e_vec[1] = e_vec[2] = 0.0;
       for (i=0; i<nbasis; i++) {
         e_vec[0] += dNidx[i] * ux[i];
         e_vec[1] += dNidy[i] * uy[i];
         e_vec[2] += (dNidx[i] * uy[i] + dNidy[i] * ux[i]);
       }
-
-      edot_vec[0] = edot_vec[1] = edot_vec[2] = 0.0;
+      
       for (i=0; i<nbasis; i++) {
         edot_vec[0] += dNidx[i] * vx[i];
         edot_vec[1] += dNidy[i] * vy[i];
         edot_vec[2] += (dNidx[i] * vy[i] + dNidy[i] * vx[i]);
       }
-      /* make edot deviatoric */
-      /*
-      {
-        PetscReal div_v = edot_vec[0] + edot_vec[1];
-        edot_vec[0] = edot_vec[0] - (1.0/3.0)* div_v;
-        edot_vec[1] = edot_vec[1] - (1.0/3.0)* div_v;
-      }
-      */
       
       /* evaluate constitutive model */
       lambda_qp = celldata->lambda;
@@ -2850,8 +2825,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       sigma_vec[TENS2D_XX] = c11 * e_vec[0] + c12 * e_vec[1];
       sigma_vec[TENS2D_YY] = c21 * e_vec[0] + c22 * e_vec[1];
       sigma_vec[TENS2D_XY] = c33 * e_vec[2];
-
-
+      
       /*
        From 
        Day and Ely "Effect of a Shallow Weak Zone on Fault Rupture: Numerical Simulation of Scale-Model Experiments",
@@ -2861,22 +2835,116 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
        beta = cs
        volumetric terms; rho (cp^2 - 2 cs^2) gamma [div(v)]
        shear terms; rho cs^2 gamma [v_{i,j} + v_{j,i}]
-       
-      */
+       */
+      
+      {
+        PetscReal factor = 1.0;
+        
+        c11 = factor * (2.0 * mu_qp + lambda_qp) * gamma;
+        c12 = factor * (lambda_qp) * gamma;
+        c21 = factor * (lambda_qp) * gamma;
+        c22 = factor * (2.0 * mu_qp + lambda_qp) * gamma;
+        c33 = factor * (mu_qp) * gamma;
+      }
+      
+      /* compute stress @ quadrature point */
+      sigma_vec[TENS2D_XX] += c11 * edot_vec[0] + c12 * edot_vec[1];
+      sigma_vec[TENS2D_YY] += c21 * edot_vec[0] + c22 * edot_vec[1];
+      sigma_vec[TENS2D_XY] += c33 * edot_vec[2];
+      
+      c->sigma[e*(c->npe * 3) + q*(3 + TENS2D_XX)] = sigma_vec[TENS2D_XX];
+      c->sigma[e*(c->npe * 3) + q*(3 + TENS2D_YY)] = sigma_vec[TENS2D_YY];
+      c->sigma[e*(c->npe * 3) + q*(3 + TENS2D_XY)] = sigma_vec[TENS2D_XY];
+    }
+  }
+  
+  for (e=0; e<c->ne; e++) {
+    
+    /* get element -> node map */
+    elnidx = &element[nbasis*e];
+    
+    /* generate dofs */
+    for (i=0; i<nbasis; i++) {
+      eldofs[2*i  ] = 2*elnidx[i];
+      eldofs[2*i+1] = 2*elnidx[i]+1;
+    }
+    
+    /* get element coordinates */
+    for (i=0; i<nbasis; i++) {
+      PetscInt nidx = elnidx[i];
+      elcoords[2*i  ] = LA_coor[2*nidx  ];
+      elcoords[2*i+1] = LA_coor[2*nidx+1];
+    }
+    
+    /* get element displacements & velocities */
+    for (i=0; i<nbasis; i++) {
+      PetscInt nidx = elnidx[i];
+      ux[i] = LA_u[2*nidx  ];
+      uy[i] = LA_u[2*nidx+1];
+      
+      vx[i] = LA_v[2*nidx  ];
+      vy[i] = LA_v[2*nidx+1];
+    }
+    
+    /* compute derivatives */
+    ElementEvaluateGeometry_CellWiseConstant2d(nbasis,elcoords,c->npe_1d,&detJ);
+    ElementEvaluateDerivatives_CellWiseConstant2d(nqp,nbasis,elcoords,
+                                                  c->npe_1d,c->dN_dxi,c->dN_deta,
+                                                  c->dN_dx,c->dN_dy);
+    
+    ierr = PetscMemzero(fe,sizeof(PetscReal)*nbasis*ndof);CHKERRQ(ierr);
+    
+    /* get access to element->quadrature points */
+    celldata = &c->cell_data[e];
+    ierr = SpecFECtxGetDRCellData(c,e,&dr_celldata);CHKERRQ(ierr);
+    
 
-      sigma_vec[TENS2D_XX] += lambda_qp * gamma * edot_vec[0];
-      sigma_vec[TENS2D_YY] += lambda_qp * gamma * edot_vec[1];
-      sigma_vec[TENS2D_XY] += mu_qp * gamma * edot_vec[2];
+    for (q=0; q<c->nqp; q++) {
+      PetscReal fac;
+      PetscReal mu_qp;
+      PetscReal *dNidx,*dNidy;
+      PetscReal coor_qp[2];
+      PetscBool inside_fault_region;
+      PetscReal DistOnFault; /**Project coords onto fault to get friction in the case of tilting */
+      PetscReal e_vec[3],sigma_vec[3],sigma_trial[3],gradu[4];
 
+      dNidx = c->dN_dx[q];
+      dNidy = c->dN_dy[q];
+      
+      /* compute strain @ quadrature point */
+      /*
+       e = Bu = [ d/dx  0    ][ u v ]^T
+       [ 0     d/dy ]
+       [ d/dy  d/dx ]
+       */
+      e_vec[0] = e_vec[1] = e_vec[2] = 0.0;
+      for (i=0; i<nbasis; i++) {
+        e_vec[0] += dNidx[i] * ux[i];
+        e_vec[1] += dNidy[i] * uy[i];
+        e_vec[2] += (dNidx[i] * uy[i] + dNidy[i] * ux[i]);
+      }
+
+        gradu[0] = gradu[1] = gradu[2] = gradu[3] = 0.0;
+        for (i=0; i<nbasis; i++) {
+          gradu[0] += dNidx[i] * ux[i];
+          gradu[1] += dNidy[i] * ux[i];
+          gradu[2] += dNidx[i] * uy[i];
+          gradu[3] += dNidy[i] * uy[i];
+        }
+        
+      coor_qp[0] = elcoords[2*q  ];
+      coor_qp[1] = elcoords[2*q+1];
+
+      mu_qp     = celldata->mu;
+      
+      sigma_vec[TENS2D_XX] = c->sigma[e*(c->npe * 3) + q*(3 + TENS2D_XX)];
+      sigma_vec[TENS2D_YY] = c->sigma[e*(c->npe * 3) + q*(3 + TENS2D_YY)];
+      sigma_vec[TENS2D_XY] = c->sigma[e*(c->npe * 3) + q*(3 + TENS2D_XY)];
 
       sigma_trial[TENS2D_XX] = sigma_vec[TENS2D_XX];
       sigma_trial[TENS2D_YY] = sigma_vec[TENS2D_YY];
       sigma_trial[TENS2D_XY] = sigma_vec[TENS2D_XY];
 
-      coor_qp[0] = elcoords[2*q  ];
-      coor_qp[1] = elcoords[2*q+1];
-
-      
       inside_fault_region = PETSC_FALSE;
 
       if (c->sdf->type == 2)
@@ -2993,8 +3061,6 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
         sigma_t = sigma_trial[TENS2D_XY];
 
         dr_celldata[q].mu = 0;
-        sliding_active = PETSC_FALSE;
-        
         if (sigma_n < 0) { /* only consider inelastic corrections if in compression */
           PetscReal L = 250.0;
           PetscReal V = 2000.0;
@@ -3044,11 +3110,9 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
             }
 
             //printf("  sigma_xy %+1.8e\n",sigma_vec[TENS2D_XY]);
-            sliding_active = PETSC_TRUE;
             dr_celldata[q].sliding = PETSC_TRUE;
           } else {
             slip_rate = 0;
-            sliding_active = PETSC_FALSE;
           }
           
           
