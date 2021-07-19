@@ -1943,197 +1943,6 @@ PetscErrorCode FaultSDFTabulateInterpolation_v2(SpecFECtx c,const PetscReal LA_v
 }
 
 
-/** %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- * FUNCTIONS TO CALCULATE ALIGNED STIFFNESS TENSOR
- */
-PetscErrorCode CreateMatrix(PetscInt nlocal, Mat *rA, PetscReal Vals[]) {
-  Mat A;
-  PetscInt first,last;
-  PetscErrorCode ierr;
-  int nglobal;
-  
-  ierr = MatCreate(PETSC_COMM_WORLD,&A); CHKERRQ(ierr);
-  ierr = MatSetType(A,MATMPIAIJ); CHKERRQ(ierr);
-
-  ierr = MatSetSizes(A,nlocal,nlocal,PETSC_DECIDE,PETSC_DECIDE); CHKERRQ(ierr);
-  ierr = MatMPIAIJSetPreallocation(A,3,NULL,1,NULL); CHKERRQ(ierr);
-
-  ierr = MatAssemblyBegin(A,MAT_FLUSH_ASSEMBLY); CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(A,MAT_FLUSH_ASSEMBLY); CHKERRQ(ierr);
-
-  ierr = MatGetSize(A,&nglobal,PETSC_NULL); CHKERRQ(ierr);
-  ierr = MatGetOwnershipRange(A,&first,&last); CHKERRQ(ierr);
-    
-    for (int row=first; row<last; row++) {
-        for (int col=first; col<last; col++) {
-            PetscScalar v = 0.;
-            ierr = MatSetValue(A,row,col,Vals[col + row*(last)],INSERT_VALUES); CHKERRQ(ierr);
-        }
-    }
-  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY); CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY); CHKERRQ(ierr);
-
-  *rA = A;
-  PetscFunctionReturn(0);
-}
-
-PetscErrorCode CreateVec(PetscInt nlocal, Vec *rx, PetscReal Vals[]) {
-  Vec x;
-  PetscInt ii[] = {0,1,2};
-  PetscErrorCode ierr;
-  ierr = VecCreate(PETSC_COMM_SELF,&x);            CHKERRQ(ierr);
-  ierr = VecSetType(x,VECSEQ);                     CHKERRQ(ierr);
-  ierr = VecSetSizes(x,nlocal,PETSC_DECIDE);       CHKERRQ(ierr);
-
-  
-  ierr = VecSetValues(x,nlocal,ii,Vals,INSERT_VALUES);CHKERRQ(ierr);
-  
-  
-  ierr = VecAssemblyBegin(x);CHKERRQ(ierr);
-  ierr = VecAssemblyEnd(x);  CHKERRQ(ierr);
-  *rx = x;
-  PetscFunctionReturn(0);
-}
-
-
-PetscErrorCode GetRotMatrix(PetscReal n[] ,PetscReal t[], Mat *CoordRot){
- PetscErrorCode ierr;
- PetscInt nlocal = 3;
- PetscReal RotVals[] = {t[0]*t[0], t[1]*t[1], t[0]*t[1] + t[1]*t[0],
-                        n[0]*n[0], n[1]*n[1], n[0]*n[1] + n[1]*n[0],
-                        t[0]*n[0], t[1]*n[1], t[0]*n[1] + t[1]*n[0]};	
- 
- ierr = CreateMatrix(nlocal, CoordRot, RotVals); CHKERRQ(ierr);
-
- PetscFunctionReturn(0);
- }
-
-PetscErrorCode GetRotMatrixInv(PetscReal n[] ,PetscReal t[], Mat *CoordRotInv){
- PetscErrorCode ierr;
- PetscInt nlocal = 3;
- PetscReal RotInvVals[] = {t[0]*t[0], n[0]*n[0], t[0]*n[0] + t[0]*n[0],
-                           t[1]*t[1], n[1]*n[1], t[1]*n[1] + t[1]*n[1],
-                           t[0]*t[1], n[0]*n[1], t[0]*n[1] + t[1]*n[0]};	
- 
- ierr = CreateMatrix(nlocal, CoordRotInv, RotInvVals); CHKERRQ(ierr);
-
- PetscFunctionReturn(0);
- }
-
-
- /**
-  * Aligns the local definition of the transversely isotropic stiffness tensor to an arbitrary basis given by the normal
-  * and tangent vector. 
-  * 
-  * Given the relation in a local reference frame
-  * Sigma* = C* epsilon*
-  * where (.)* denotes the matrices in a local basis, we rather want the description as 
-  * Sigma = C epsilon.
-  * 
-  * We relate the stress components and strain components from the local to the global reference frame via
-  * Sigma* = A Sigma 
-  *        = C* R A R^-1 epsilon,
-  * where R is the Reuter matrix, and A is the rotation matrix built from the normal and tangent vectors.
-  *  
-  * Then we relate the stiffness tensors from local and global reference as
-  *  C = A^-1 C* R A R^1
-  */
-PetscErrorCode CalculateAlignedStiffness(Mat *C, PetscReal C_local[], PetscReal normal[] ,PetscReal tangent[]){
-    PetscErrorCode ierr;
-    
-    Mat  Reuter, CoordRot, CoordRotInv, ReuterInv;
-    PetscReal ReuterVals[] =    {1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 2.0};
-    PetscReal ReuterInvVals[] = {1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.5};
-    Mat CLocMat, ARt, RARt, CRARt, AtCRARt ;
-    PetscInt nlocal = 3;
-    PetscViewer    viewer;
-
-    // Prepare the matrices A, Ainv, R, Rinv, C to perform obtain the alligned C* = A^-1 C R A R^-1 
-    ierr = GetRotMatrix(normal, tangent, &CoordRot);                                 CHKERRQ(ierr);
-    ierr = GetRotMatrixInv(normal, tangent, &CoordRotInv);                           CHKERRQ(ierr);
-
-    ierr = CreateMatrix(nlocal, &Reuter, ReuterVals);                                CHKERRQ(ierr);
-    ierr = CreateMatrix(nlocal, &ReuterInv, ReuterInvVals);                          CHKERRQ(ierr);
-    ierr = CreateMatrix(nlocal, &CLocMat, C_local);                                  CHKERRQ(ierr);
-    
-    // Perform the rhs of the matrix operations
-    ierr = MatMatMult(CoordRot, ReuterInv, MAT_INITIAL_MATRIX,PETSC_DEFAULT,&ARt);   CHKERRQ(ierr); // Calculate AR_inv
-    ierr = MatMatMult(Reuter, ARt, MAT_INITIAL_MATRIX,PETSC_DEFAULT,&RARt);          CHKERRQ(ierr); // Calculate RAR_inv
-    ierr = MatMatMult(CLocMat, RARt, MAT_INITIAL_MATRIX,PETSC_DEFAULT,&CRARt);       CHKERRQ(ierr); // Calculate CRAR_inv
-    ierr = MatMatMult(CoordRotInv, CRARt, MAT_INITIAL_MATRIX,PETSC_DEFAULT,&AtCRARt);CHKERRQ(ierr); // A_inv C R A R_inv
-    
-    *C = AtCRARt;
-
-    // just checking: screen output
-    //MatView(Reuter,PETSC_VIEWER_STDOUT_WORLD);
-    //MatView(ReuterInv,PETSC_VIEWER_STDOUT_WORLD);
-    //MatView(CoordRot,PETSC_VIEWER_STDOUT_WORLD);
-    //MatView(ARt,PETSC_VIEWER_STDOUT_WORLD);
-    //MatView(RARt,PETSC_VIEWER_STDOUT_WORLD);
-    //MatView(CLocMat,PETSC_VIEWER_STDOUT_WORLD);
-    //MatView(AtCRARt,PETSC_VIEWER_STDOUT_WORLD);
-
-    // Destroy the matrices
-    ierr = MatDestroy(&Reuter);      CHKERRQ(ierr);
-    ierr = MatDestroy(&ReuterInv);   CHKERRQ(ierr);
-    ierr = MatDestroy(&CLocMat);     CHKERRQ(ierr);
-    ierr = MatDestroy(&CoordRot);    CHKERRQ(ierr);
-    ierr = MatDestroy(&CoordRotInv); CHKERRQ(ierr);
-    ierr = MatDestroy(&ARt);         CHKERRQ(ierr);
-    ierr = MatDestroy(&RARt);        CHKERRQ(ierr);
-    ierr = MatDestroy(&CRARt);       CHKERRQ(ierr);
-    PetscFunctionReturn(0);
-}
-
-/**
- * Creates a vector from an array and performs the Matrix Vector operation to obtain the stress in the global coordinates
- * sigma = C epsilon
- */
-PetscErrorCode GetGlobalCoordSigma(PetscReal sigma[], PetscReal e_vec[], PetscReal e_vecdot[], PetscReal C_local[], PetscReal KV_Cloc[], PetscReal normal[] ,PetscReal tangent[]){
-  PetscErrorCode ierr;
-  Mat  C, C_KV;
-  Vec Vepsilon, VepsilonDot, Vsigma, KV_sigma;
-
-  // C = A^-1 C* R A R^-1 
-  ierr = CalculateAlignedStiffness(&C, C_local, normal ,tangent); CHKERRQ(ierr);
-  
-  // Allocate and initialize epsilon vector
-  ierr = CreateVec(3, &Vepsilon, e_vec);CHKERRQ(ierr);
-  
-  //Create vector VSigma initialized with epsilon's shape (and values)
-  ierr = VecDuplicate(Vepsilon,&Vsigma);CHKERRQ(ierr);
-
-  // sigma = C epsilon
-  ierr = MatMult(C,Vepsilon,Vsigma);CHKERRQ(ierr);
-
-  /** The KV damping from 
-      Day and Ely "Effect of a Shallow Weak Zone on Fault Rupture: Numerical Simulation of Scale-Model Experiments", BSSA, 2002
-  */ 
-  ierr = CalculateAlignedStiffness(&C_KV, KV_Cloc, normal ,tangent); CHKERRQ(ierr);// Align KV damping 
-  ierr = CreateVec(3, &VepsilonDot, e_vecdot);                       CHKERRQ(ierr);// Create edot vector
-  ierr = VecDuplicate(Vepsilon,&KV_sigma);                           CHKERRQ(ierr);// Allocate the resulting sigma vector 
-  ierr = MatMult(C_KV,VepsilonDot,KV_sigma);                         CHKERRQ(ierr);// Sigma_kv = C_kv edot
-
-  ierr = VecAXPY(Vsigma,1.0,KV_sigma);                               CHKERRQ(ierr);// sigma <- sigma + 1.0 sigma_kv
-
-  // just checking: screen output
-  //VecView(Vsigma, 	PETSC_VIEWER_STDOUT_SELF );
-
-  //Extract the sigma array
-  ierr = VecGetArray(Vsigma, &sigma);CHKERRQ(ierr);
-  
-  ierr = MatDestroy(&C);             CHKERRQ(ierr);
-  ierr = MatDestroy(&C_KV);          CHKERRQ(ierr);
-  ierr = VecDestroy(&Vepsilon);      CHKERRQ(ierr);
-  ierr = VecDestroy(&VepsilonDot);   CHKERRQ(ierr);
-  ierr = VecDestroy(&Vsigma);        CHKERRQ(ierr);
-  ierr = VecDestroy(&KV_sigma);      CHKERRQ(ierr);
-  PetscFunctionReturn(0);
-}
-/**
- * FUNCTIONS TO CALCULATE ALIGNED STIFFNESS TENSOR>> END
- * %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- */
 
 /**%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
  * AVERAGING SCHEME
@@ -2424,16 +2233,25 @@ PetscErrorCode StressAvgElementBoundariesEval_StressAtLocation(SpecFECtx c,
       c22 = 2.0 * mu_qp + lambda_qp;
       c33 = mu_qp;
       
-      PetscReal StiffnessC[] = {c11, c12, 0.0, 
-                                c21, c22, 0.0, 
-                                0.0, 0.0, c33};
-
-      PetscReal C_KV[] = {lambda_qp * gamma, 0.0,                0.0,  
-                          0.0,               lambda_qp * gamma,  0.0, 
-                          0.0,               0.0,                mu_qp * gamma};
-
-      ierr = GetGlobalCoordSigma(sigma_vec, e_vec, edot_vec, 
-                                 StiffnessC, C_KV, normal  ,tangent);CHKERRQ(ierr);
+      /* compute stress @ quadrature point */
+      sigma_vec[TENS2D_XX] = c11 * e_vec[0] + c12 * e_vec[1];
+      sigma_vec[TENS2D_YY] = c21 * e_vec[0] + c22 * e_vec[1];
+      sigma_vec[TENS2D_XY] = c33 * e_vec[2];
+      
+      {
+        PetscReal factor = 1.0;
+        
+        c11 = factor * (2.0 * mu_qp + lambda_qp) * gamma;
+        c12 = factor * (lambda_qp) * gamma;
+        c21 = factor * (lambda_qp) * gamma;
+        c22 = factor * (2.0 * mu_qp + lambda_qp) * gamma;
+        c33 = factor * (mu_qp) * gamma;
+      }
+      
+      /* compute stress @ quadrature point */
+      sigma_vec[TENS2D_XX] += c11 * edot_vec[0] + c12 * edot_vec[1];
+      sigma_vec[TENS2D_YY] += c21 * edot_vec[0] + c22 * edot_vec[1];
+      sigma_vec[TENS2D_XY] += c33 * edot_vec[2];
 
       for (PetscInt d=0; d<3; d++){
         _sigma_vec[d] += sigma_vec[d] / ((PetscReal) (FlagRepCase)); 
@@ -2978,13 +2796,13 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
          * If inside the fault zone: 
          * replace the sigma trial array by a computation of a continuous sigma array in global coordinates.
          */
-        ierr = StressAvgElementBoundariesEval_StressAtLocation(c,
-                                                               coor_qp, normal, tangent,  
-                                                               LA_coor,
-                                                               LA_u, 
-                                                               LA_v,
-                                                               gamma, 
-                                                               sigma_trial);CHKERRQ(ierr);
+        // ierr = StressAvgElementBoundariesEval_StressAtLocation(c,
+        //                                                        coor_qp, normal, tangent,  
+        //                                                        LA_coor,
+        //                                                        LA_u, 
+        //                                                        LA_v,
+        //                                                        gamma, 
+        //                                                        sigma_trial);CHKERRQ(ierr);
 
         //
         ierr = GlobalToLocalChangeOfBasis(normal, tangent, sigma_trial);CHKERRQ(ierr);
