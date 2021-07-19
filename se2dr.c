@@ -75,6 +75,161 @@ typedef struct {
 } PointwiseContext;
 
 
+PetscErrorCode StressView_PV(SpecFECtx c,const PetscReal sigma[],const char filename[])
+{
+  PetscErrorCode ierr;
+  FILE *fp = NULL;
+  PetscInt i,j,q,e;
+  Vec coor;
+  const PetscReal *LA_coor;
+  PetscReal *elcoords;
+  
+  
+
+  fp = fopen(filename,"w");
+  if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open %s",filename);
+
+  elcoords = c->elbuf_coor;
+  ierr = DMGetCoordinatesLocal(c->dm,&coor);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(coor,&LA_coor);CHKERRQ(ierr);
+
+  fprintf(fp,"<?xml version=\"1.0\"?>\n");
+  fprintf(fp,"<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">\n");
+  fprintf(fp,"<UnstructuredGrid>\n");
+  fprintf(fp,"<Piece NumberOfPoints=\"%d\" NumberOfCells=\"%d\">\n",c->ne * c->npe,c->ne * (c->npe_1d-1)*(c->npe_1d-1));
+
+
+  fprintf(fp,"<Cells>\n");
+  fprintf(fp,"  <DataArray type=\"Int32\" Name=\"connectivity\" format=\"ascii\">\n");
+  {
+    PetscInt cnt = 0;
+    fprintf(fp,"  ");
+    for (e=0; e<c->ne; e++) {
+      for (j=0; j<c->npe_1d-1; j++) {
+        for (i=0; i<c->npe_1d-1; i++) {
+          PetscInt cell[4],d;
+          
+          cell[0] = i + j * (c->npe_1d);
+          cell[1] = cell[0] + 1;
+          cell[2] = cell[1] + c->npe_1d;
+          cell[3] = cell[0] + c->npe_1d;
+          for (d=0; d<4; d++) {
+            cell[d] += cnt;
+          }
+          
+          fprintf(fp,"%d %d %d %d ",cell[0],cell[1],cell[2],cell[3]);
+        }
+      }
+      cnt += (c->npe_1d * c->npe_1d);
+    }
+  }
+  fprintf(fp,"\n  </DataArray>\n");
+  
+  
+  fprintf(fp,  "<DataArray type=\"Int32\" Name=\"offsets\" format=\"ascii\">\n");
+  {
+    PetscInt cnt = 0;
+    fprintf(fp,"  ");
+    for (e=0; e<c->ne; e++) {
+      for (j=0; j<c->npe_1d-1; j++) {
+        for (i=0; i<c->npe_1d-1; i++) {
+          cnt += 4;
+          fprintf(fp,"%d ",cnt);
+        }
+      }
+      //cnt += 1;
+    }
+  }
+  fprintf(fp,"\n  </DataArray>\n");
+
+  fprintf(fp,"  <DataArray type=\"UInt8\" Name=\"types\" format=\"ascii\">\n");
+  {
+    PetscInt VTK_QUAD = 9;
+    fprintf(fp,"  ");
+    for (e=0; e<c->ne; e++) {
+      for (j=0; j<c->npe_1d-1; j++) {
+        for (i=0; i<c->npe_1d-1; i++) {
+          fprintf(fp,"%d ",VTK_QUAD);
+        }
+      }
+    }
+  }
+  fprintf(fp,"\n  </DataArray>\n");
+  
+  fprintf(fp,"</Cells>\n");
+
+  
+  
+  /* coordinates */
+  fprintf(fp,"<Points>\n");
+  fprintf(fp,"  <DataArray type=\"Float64\" Name=\"Points\" NumberOfComponents=\"3\" format=\"ascii\">\n");
+  for (e=0; e<c->ne; e++) {
+    const PetscInt *elnidx = &c->element[c->npe*e];
+    
+    for (i=0; i<c->npe; i++) {
+      PetscInt nidx = elnidx[i];
+      elcoords[2*i  ] = LA_coor[2*nidx  ];
+      elcoords[2*i+1] = LA_coor[2*nidx+1];
+    }
+    
+    for (i=0; i<c->npe; i++) {
+      PetscReal coor[] = {0,0,0};
+      coor[0] = elcoords[2*i  ];
+      coor[1] = elcoords[2*i+1];
+      fprintf(fp,"  %+1.4e %+1.4e %+1.4e\n",coor[0],coor[1],coor[2]);
+    }
+  }
+  fprintf(fp,"  </DataArray>\n");
+  fprintf(fp,"</Points>\n");
+
+  fprintf(fp,"<PointData>\n");
+  /* sigma_xx */
+  fprintf(fp,"  <DataArray type=\"Float64\" Name=\"sigma_xx\" format=\"ascii\">\n");
+  for (e=0; e<c->ne; e++) {
+    const PetscReal *sigma_e = &sigma[e*(3*c->npe)];
+    fprintf(fp,"  ");
+    for (q=0; q<c->nqp; q++) {
+      fprintf(fp,"%+1.4e ",c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XX]);
+    }
+    fprintf(fp,"\n");
+  }
+  fprintf(fp,"  </DataArray>\n");
+  
+  fprintf(fp,"  <DataArray type=\"Float64\" Name=\"sigma_yy\" format=\"ascii\">\n");
+  for (e=0; e<c->ne; e++) {
+    const PetscReal *sigma_e = &sigma[e*(3*c->npe)];
+    fprintf(fp,"  ");
+    for (q=0; q<c->nqp; q++) {
+      fprintf(fp,"%+1.4e ",c->sigma[e*(c->npe * 3) + q*3 + TENS2D_YY]);
+    }
+    fprintf(fp,"\n");
+  }
+  fprintf(fp,"  </DataArray>\n");
+  
+  fprintf(fp,"  <DataArray type=\"Float64\" Name=\"sigma_xy\" format=\"ascii\">\n");
+  for (e=0; e<c->ne; e++) {
+    const PetscReal *sigma_e = &sigma[e*(3*c->npe)];
+    fprintf(fp,"  ");
+    for (q=0; q<c->nqp; q++) {
+      fprintf(fp,"%+1.4e ",c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XY]);
+    }
+    fprintf(fp,"\n");
+  }
+  fprintf(fp,"  </DataArray>\n");
+
+  
+  fprintf(fp,"</PointData>\n");
+  
+  fprintf(fp,"</Piece>\n");
+  fprintf(fp,"</UnstructuredGrid>\n");
+  fprintf(fp,"</VTKFile>\n");
+  
+  ierr = VecRestoreArrayRead(coor,&LA_coor);CHKERRQ(ierr);
+  fclose(fp);
+  PetscFunctionReturn(0);
+}
+
+
 /**
  * Function to calculate weighting for the traction
 */ 
@@ -4686,6 +4841,11 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
       char prefix[PETSC_MAX_PATH_LEN];
       ierr = PetscSNPrintf(prefix,PETSC_MAX_PATH_LEN-1,"step-%.4D",k);CHKERRQ(ierr);
       ierr = SE2WaveWaveFieldViewer(ctx,k,time,u,v,prefix);CHKERRQ(ierr);
+    }
+    if (k%of == 0) {
+      char prefix[PETSC_MAX_PATH_LEN];
+      ierr = PetscSNPrintf(prefix,PETSC_MAX_PATH_LEN-1,"step-%.4D-sigma.vtu",k);CHKERRQ(ierr);
+      ierr = StressView_PV(ctx,(const PetscReal*)ctx->sigma,prefix);CHKERRQ(ierr);
     }
     
     if (time >= time_max) {
