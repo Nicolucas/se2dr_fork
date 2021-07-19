@@ -62,6 +62,7 @@ struct _p_SpecFECtx {
   PetscReal mu_s,mu_d,D_c; /* linear slip weakening parameters */
 
   SDF sdf;
+  PetscReal *sigma; /* size = ne * npe * 3 */
 };
 
 
@@ -865,6 +866,16 @@ PetscErrorCode SpecFECtxScaleMeshCoords(SpecFECtx c,PetscReal scale[],PetscReal 
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode SpecFECreateStress(SpecFECtx c,PetscReal **_s)
+{
+  PetscReal      *s;
+  PetscErrorCode ierr;
+  
+  ierr = PetscCalloc1(c->ne*c->npe*3,&s);CHKERRQ(ierr);
+  *_s = s;
+  PetscFunctionReturn(0);
+}
+
 PetscErrorCode SpecFECtxCreateMesh_SEQ(SpecFECtx c,PetscInt dim,PetscInt mx,PetscInt my,PetscInt mz,PetscInt basisorder,PetscInt ndofs)
 {
   PetscErrorCode ierr;
@@ -926,6 +937,8 @@ PetscErrorCode SpecFECtxCreateMesh_SEQ(SpecFECtx c,PetscInt dim,PetscInt mx,Pets
   ierr = PetscMalloc(sizeof(PetscReal)*c->npe*c->dofs,&c->elbuf_field2);CHKERRQ(ierr);
   ierr = PetscMalloc(sizeof(PetscReal)*c->npe*c->dofs,&c->elbuf_field3);CHKERRQ(ierr);
   ierr = PetscMalloc(sizeof(PetscInt)*c->npe*c->dofs,&c->elbuf_dofs);CHKERRQ(ierr);
+  
+  ierr = SpecFECreateStress(c,&c->sigma);CHKERRQ(ierr);
   
   PetscFunctionReturn(0);
 }
