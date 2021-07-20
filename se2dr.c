@@ -63,6 +63,7 @@ struct _p_SpecFECtx {
 
   SDF sdf;
   PetscReal *sigma; /* size = ne * npe * 3 */
+  //PetscReal *gradu; /* required to test cg projection */
 };
 
 
@@ -74,31 +75,53 @@ typedef struct {
   PetscReal *buffer;
 } PointwiseContext;
 
+PetscErrorCode CreateGLLCoordsWeights(PetscInt N,PetscInt *_npoints,PetscReal **_xi,PetscReal **_w);
+PetscErrorCode TabulateBasis1d_CLEGENDRE(PetscInt npoints,PetscReal xi[],PetscInt order,PetscInt *_nbasis,PetscReal ***_Ni);
+void ElementEvaluateGeometry_CellWiseConstant2d(PetscInt npe,PetscReal el_coords[],
+                                                PetscInt nbasis,PetscReal *detJ);
 
-PetscErrorCode StressView_PV(SpecFECtx c,const PetscReal sigma[],const char filename[])
+PetscErrorCode SpecFECreateQuadratureField(SpecFECtx c,PetscInt blocksize,PetscReal **_f)
+{
+  PetscReal      *f;
+  PetscErrorCode ierr;
+  
+  ierr = PetscCalloc1(c->ne*c->nqp*blocksize,&f);CHKERRQ(ierr);
+  *_f = f;
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode SpecFEGetElementQuadratureField(SpecFECtx c,PetscInt blocksize,PetscInt e,const PetscReal *f,PetscReal **fe)
+{
+  *fe = (PetscReal*)&f[e * c->nqp * blocksize];
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode QuadratureFieldDGView_PV(SpecFECtx c,PetscInt blocksize,const PetscReal field[],
+                                        const char *field_name[],
+                                        const char filename[])
 {
   PetscErrorCode ierr;
   FILE *fp = NULL;
-  PetscInt i,j,q,e;
+  PetscInt i,j,q,e,b;
   Vec coor;
   const PetscReal *LA_coor;
   PetscReal *elcoords;
   
   
-
+  
   fp = fopen(filename,"w");
   if (!fp) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_FILE_OPEN,"Failed to open %s",filename);
-
+  
   elcoords = c->elbuf_coor;
   ierr = DMGetCoordinatesLocal(c->dm,&coor);CHKERRQ(ierr);
   ierr = VecGetArrayRead(coor,&LA_coor);CHKERRQ(ierr);
-
+  
   fprintf(fp,"<?xml version=\"1.0\"?>\n");
   fprintf(fp,"<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">\n");
   fprintf(fp,"<UnstructuredGrid>\n");
   fprintf(fp,"<Piece NumberOfPoints=\"%d\" NumberOfCells=\"%d\">\n",c->ne * c->npe,c->ne * (c->npe_1d-1)*(c->npe_1d-1));
-
-
+  
+  
   fprintf(fp,"<Cells>\n");
   fprintf(fp,"  <DataArray type=\"Int32\" Name=\"connectivity\" format=\"ascii\">\n");
   {
@@ -141,7 +164,7 @@ PetscErrorCode StressView_PV(SpecFECtx c,const PetscReal sigma[],const char file
     }
   }
   fprintf(fp,"\n  </DataArray>\n");
-
+  
   fprintf(fp,"  <DataArray type=\"UInt8\" Name=\"types\" format=\"ascii\">\n");
   {
     PetscInt VTK_QUAD = 9;
@@ -157,8 +180,6 @@ PetscErrorCode StressView_PV(SpecFECtx c,const PetscReal sigma[],const char file
   fprintf(fp,"\n  </DataArray>\n");
   
   fprintf(fp,"</Cells>\n");
-
-  
   
   /* coordinates */
   fprintf(fp,"<Points>\n");
@@ -181,42 +202,23 @@ PetscErrorCode StressView_PV(SpecFECtx c,const PetscReal sigma[],const char file
   }
   fprintf(fp,"  </DataArray>\n");
   fprintf(fp,"</Points>\n");
-
+  
   fprintf(fp,"<PointData>\n");
-  /* sigma_xx */
-  fprintf(fp,"  <DataArray type=\"Float64\" Name=\"sigma_xx\" format=\"ascii\">\n");
-  for (e=0; e<c->ne; e++) {
-    const PetscReal *sigma_e = &sigma[e*(3*c->npe)];
-    fprintf(fp,"  ");
-    for (q=0; q<c->nqp; q++) {
-      fprintf(fp,"%+1.4e ",c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XX]);
-    }
-    fprintf(fp,"\n");
-  }
-  fprintf(fp,"  </DataArray>\n");
   
-  fprintf(fp,"  <DataArray type=\"Float64\" Name=\"sigma_yy\" format=\"ascii\">\n");
-  for (e=0; e<c->ne; e++) {
-    const PetscReal *sigma_e = &sigma[e*(3*c->npe)];
-    fprintf(fp,"  ");
-    for (q=0; q<c->nqp; q++) {
-      fprintf(fp,"%+1.4e ",c->sigma[e*(c->npe * 3) + q*3 + TENS2D_YY]);
-    }
-    fprintf(fp,"\n");
-  }
-  fprintf(fp,"  </DataArray>\n");
-  
-  fprintf(fp,"  <DataArray type=\"Float64\" Name=\"sigma_xy\" format=\"ascii\">\n");
-  for (e=0; e<c->ne; e++) {
-    const PetscReal *sigma_e = &sigma[e*(3*c->npe)];
-    fprintf(fp,"  ");
-    for (q=0; q<c->nqp; q++) {
-      fprintf(fp,"%+1.4e ",c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XY]);
-    }
-    fprintf(fp,"\n");
-  }
-  fprintf(fp,"  </DataArray>\n");
+  for (b=0; b<blocksize; b++) {
+    fprintf(fp,"  <DataArray type=\"Float64\" Name=\"%s\" format=\"ascii\">\n",field_name[b]);
+    for (e=0; e<c->ne; e++) {
+      PetscReal *field_e;
 
+      ierr = SpecFEGetElementQuadratureField(c,blocksize,e,field,&field_e);CHKERRQ(ierr);
+      fprintf(fp,"  ");
+      for (q=0; q<c->nqp; q++) {
+        fprintf(fp,"%+1.4e ",field_e[q * blocksize + b]);
+      }
+      fprintf(fp,"\n");
+    }
+    fprintf(fp,"  </DataArray>\n");
+  }
   
   fprintf(fp,"</PointData>\n");
   
@@ -229,6 +231,386 @@ PetscErrorCode StressView_PV(SpecFECtx c,const PetscReal sigma[],const char file
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode StressView_PV(SpecFECtx c,const PetscReal sigma[],const char filename[])
+{
+  PetscErrorCode ierr;
+  const char *field_names[] = { "sigma_xx", "sigma_yy", "sigma_xy" };
+  ierr = QuadratureFieldDGView_PV(c,3,sigma,field_names,filename);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+/*
+ \int w field_q
+ = \sum_q w_q field_q |J_q|
+*/
+PetscErrorCode DGProject_CellAssemble_ScalarMixedMassMatrix2d(
+  PetscInt nbasis,
+  PetscInt nqp,PetscReal w[],PetscReal dJ[],PetscReal **Ni,PetscReal field[],PetscReal m[])
+{
+  PetscErrorCode ierr;
+  PetscInt i,q;
+  
+  ierr = PetscMemzero(m,nbasis*sizeof(PetscReal));CHKERRQ(ierr);
+  for (q=0; q<nqp; q++) {
+    for (i=0; i<nbasis; i++) {
+      m[i] += w[q] * Ni[q][i] * field[q] * dJ[q];
+    }
+  }
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode DGProject_CellAssemble_ScalarMassMatrix2d(
+  PetscInt nbasis,
+  PetscReal w[],PetscReal dJ[],PetscReal m[])
+{
+  PetscErrorCode ierr;
+  PetscInt i;
+  
+  ierr = PetscMemzero(m,nbasis*sizeof(PetscReal));CHKERRQ(ierr);
+  for (i=0; i<nbasis; i++) {
+    m[i] += w[i] * dJ[i];
+  }
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode DGProject(SpecFECtx c,PetscInt k,PetscInt blocksize,PetscReal *field)
+{
+  PetscErrorCode ierr;
+  
+  PetscInt nqp,n1d,nbasis_k,nbasis_k_1d,q,qi,qj,i,j,e;
+  PetscInt npe_1d_k,npe_k;
+  PetscReal *xi1d,*w;
+  PetscReal *xi1d_k,*w1d_k,*w_k;
+  PetscReal **N_k,**N;
+  PetscReal *dJ,*dJ_k;
+  PetscReal *elcoords;
+  Vec coor;
+  const PetscReal *LA_coor;
+  PetscReal *Me,*Mf,*proj;
+  PetscReal *qp_buffer;
+  
+  
+  if (k > c->basisorder) SETERRQ2(PETSC_COMM_SELF,PETSC_ERR_SUP,"SpecFECtx defines basis of degree %D. You requested to project into degree %D. Must project to degree less than or to that defined by SpecFECtx",c->basisorder,k);
+  
+  elcoords = c->elbuf_coor;
+
+  nqp  = c->nqp;
+  n1d  = c->npe_1d;
+  xi1d = c->xi1d;
+  w    = c->w;
+  
+  
+  /* tensor product for weights */
+  if (k > 0) {
+    ierr = CreateGLLCoordsWeights(k,&npe_1d_k,&xi1d_k,&w1d_k);CHKERRQ(ierr);
+  } else {
+    npe_1d_k = 1;
+    ierr = PetscCalloc1(npe_1d_k,&xi1d_k);CHKERRQ(ierr);
+    xi1d_k[0] = 0.0;
+    ierr = PetscCalloc1(npe_1d_k,&w1d_k);CHKERRQ(ierr);
+    w1d_k[0] = 1.0;
+  }
+  
+  npe_k = npe_1d_k * npe_1d_k;
+  
+  ierr = PetscCalloc1(npe_k,&w_k);CHKERRQ(ierr);
+  for (j=0; j<npe_1d_k; j++) {
+    for (i=0; i<npe_1d_k; i++) {
+      w_k[i+j*npe_1d_k] = w1d_k[i] * w1d_k[j];
+    }
+  }
+
+  
+  if (k > 0) {
+    ierr = TabulateBasis1d_CLEGENDRE(n1d,xi1d,k,&nbasis_k_1d,&N_k);CHKERRQ(ierr);
+  } else {
+    nbasis_k_1d = 1;
+    ierr = PetscMalloc(sizeof(PetscReal*)*n1d,&N_k);CHKERRQ(ierr);
+    for (i=0; i<n1d; i++) {
+      ierr = PetscMalloc(sizeof(PetscReal)*nbasis_k_1d,&N_k[i]);CHKERRQ(ierr);
+      N_k[i][0] = 1.0;
+    }
+  }
+  
+  nbasis_k = nbasis_k_1d * nbasis_k_1d;
+  
+  if (npe_k != nbasis_k) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_SUP,"Basis of projection space are inconsistent");
+  
+  ierr = PetscMalloc(sizeof(PetscReal*)*nqp,&N);CHKERRQ(ierr);
+  for (i=0; i<nqp; i++) {
+    ierr = PetscMalloc(sizeof(PetscReal)*nbasis_k,&N[i]);CHKERRQ(ierr);
+  }
+
+  for (j=0; j<nbasis_k_1d; j++) {
+    for (i=0; i<nbasis_k_1d; i++) {
+      
+      for (qj=0; qj<n1d; qj++) {
+        for (qi=0; qi<n1d; qi++) {
+          
+          N[qi + qj*n1d][i + j*nbasis_k_1d] = N_k[qi][i] * N_k[qj][j];
+          
+        }
+      }
+    }
+  }
+  
+  ierr = PetscCalloc1(nqp,&dJ);CHKERRQ(ierr);
+  ierr = PetscCalloc1(npe_k,&dJ_k);CHKERRQ(ierr);
+  
+  ierr = PetscCalloc1(npe_k,&Me);CHKERRQ(ierr);
+  ierr = PetscCalloc1(npe_k,&Mf);CHKERRQ(ierr);
+  ierr = PetscCalloc1(npe_k,&proj);CHKERRQ(ierr);
+
+  ierr = PetscCalloc1(nqp,&qp_buffer);CHKERRQ(ierr);
+
+  ierr = DMGetCoordinatesLocal(c->dm,&coor);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(coor,&LA_coor);CHKERRQ(ierr);
+
+  for (e=0; e<c->ne; e++) {
+    PetscInt *elnidx = &c->element[c->npe*e];
+    PetscReal detJ;
+    PetscInt b;
+    
+    for (i=0; i<c->npe; i++) {
+      PetscInt nidx = elnidx[i];
+      elcoords[2*i  ] = LA_coor[2*nidx  ];
+      elcoords[2*i+1] = LA_coor[2*nidx+1];
+    }
+    ElementEvaluateGeometry_CellWiseConstant2d(c->npe,elcoords,c->npe_1d,&detJ);
+    for (q=0; q<nqp; q++) {
+      dJ[q] = detJ;
+    }
+    for (q=0; q<npe_k; q++) {
+      dJ_k[q] = detJ;
+    }
+
+    ierr = DGProject_CellAssemble_ScalarMassMatrix2d(npe_k,w_k,dJ_k,Me);CHKERRQ(ierr);
+    
+    
+    for (b=0; b<blocksize; b++) {
+      /* pack dof into buffer */
+      for (q=0; q<nqp; q++) {
+        qp_buffer[q] = field[e*c->npe * blocksize + q*blocksize + b];
+      }
+      
+      /* project */
+      ierr = DGProject_CellAssemble_ScalarMixedMassMatrix2d(nbasis_k,nqp,w,dJ,N,qp_buffer,Mf);CHKERRQ(ierr);
+      
+      for (i=0; i<npe_k; i++) {
+        proj[i] = Mf[i] / Me[i];
+      }
+      
+      /* interpolate projection and store in buffer */
+      {
+        for (q=0; q<nqp; q++) {
+          qp_buffer[q] = 0.0;
+          for (i=0; i<npe_k; i++) {
+            qp_buffer[q] += N[q][i] * proj[i];
+          }
+        }
+      }
+      
+      /* unpack buffer */
+      for (q=0; q<nqp; q++) {
+        field[e*c->npe * blocksize + q*blocksize + b] = qp_buffer[q];
+      }
+    }
+    
+  }
+  
+  ierr = VecRestoreArrayRead(coor,&LA_coor);CHKERRQ(ierr);
+
+  
+  ierr = PetscFree(proj);CHKERRQ(ierr);
+  ierr = PetscFree(Me);CHKERRQ(ierr);
+  ierr = PetscFree(Mf);CHKERRQ(ierr);
+  ierr = PetscFree(qp_buffer);CHKERRQ(ierr);
+  
+  ierr = PetscFree(xi1d_k);CHKERRQ(ierr);
+  ierr = PetscFree(w1d_k);CHKERRQ(ierr);
+  ierr = PetscFree(w_k);CHKERRQ(ierr);
+  
+  ierr = PetscFree(dJ_k);CHKERRQ(ierr);
+  ierr = PetscFree(dJ);CHKERRQ(ierr);
+  for (q=0; q<n1d; q++) {
+    ierr = PetscFree(N_k[q]);CHKERRQ(ierr);
+  }
+  ierr = PetscFree(N_k);CHKERRQ(ierr);
+  for (q=0; q<nqp; q++) {
+    ierr = PetscFree(N[q]);CHKERRQ(ierr);
+  }
+  ierr = PetscFree(N);CHKERRQ(ierr);
+  
+  PetscFunctionReturn(0);
+}
+
+
+
+PetscErrorCode CGProject_AssembleBilinearForm_ScalarMass2d(SpecFECtx c,Vec A)
+{
+  PetscErrorCode ierr;
+  PetscInt  e,index,q,i,nbasis;
+  PetscInt  *element,*elnidx,*eldofs;
+  PetscReal *elcoords,*Me,detJ;
+  Vec       coor;
+  const PetscReal *LA_coor;
+  
+  ierr = VecZeroEntries(A);CHKERRQ(ierr);
+  
+  eldofs   = c->elbuf_dofs;
+  elcoords = c->elbuf_coor;
+  nbasis   = c->npe;
+  Me       = c->elbuf_field;
+  element  = c->element;
+  
+  ierr = DMGetCoordinatesLocal(c->dm,&coor);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(coor,&LA_coor);CHKERRQ(ierr);
+  
+  for (e=0; e<c->ne; e++) {
+    elnidx = &element[nbasis*e];
+    
+    for (i=0; i<nbasis; i++) {
+      eldofs[i] = elnidx[i];
+    }
+    
+    for (i=0; i<nbasis; i++) {
+      PetscInt nidx = elnidx[i];
+      elcoords[2*i  ] = LA_coor[2*nidx  ];
+      elcoords[2*i+1] = LA_coor[2*nidx+1];
+    }
+    ElementEvaluateGeometry_CellWiseConstant2d(nbasis,elcoords,c->npe_1d,&detJ);
+    
+    for (q=0; q<nbasis; q++) {
+      PetscReal fac,Me_ii;
+      
+      fac = detJ * c->w[q];
+      Me_ii = fac * 1.0;
+      /* \int u0v0 dV */
+      index = q;
+      Me[index] = Me_ii;
+    }
+    ierr = VecSetValues(A,nbasis,eldofs,Me,ADD_VALUES);CHKERRQ(ierr);
+  }
+  ierr = VecAssemblyBegin(A);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(A);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(coor,&LA_coor);CHKERRQ(ierr);
+  
+  PetscFunctionReturn(0);
+}
+
+
+
+PetscErrorCode CGProjectNative(SpecFECtx c,PetscInt k,PetscInt blocksize,PetscReal field[],Vec *_proj)
+{
+  PetscInt e,i,b;
+  PetscInt *eldofs;
+  PetscReal *elcoords;
+  PetscInt nbasis;
+  PetscReal dJ;
+  Vec       coor;
+  const PetscReal *LA_coor;
+  PetscReal *m;
+  Vec M,Mf,proj;
+  PetscErrorCode ierr;
+  
+  
+  if (k > c->basisorder) SETERRQ2(PETSC_COMM_SELF,PETSC_ERR_SUP,"SpecFECtx defines basis of degree %D. You requested to project into degree %D. Must project to degree less than or to that defined by SpecFECtx",c->basisorder,k);
+
+  proj = *_proj;
+  
+  if (!proj) {
+    Vec      x;
+    PetscInt N,n,bs;
+    
+    ierr = DMCreateGlobalVector(c->dm,&x);CHKERRQ(ierr);
+    ierr = VecGetBlockSize(x,&bs);CHKERRQ(ierr);
+    ierr = VecGetSize(x,&N);CHKERRQ(ierr);
+    ierr = VecGetLocalSize(x,&n);CHKERRQ(ierr);
+    
+    ierr = VecCreate(PetscObjectComm((PetscObject)x),&proj);CHKERRQ(ierr);
+    ierr = VecSetSizes(proj,blocksize * n/bs,blocksize * N/bs);CHKERRQ(ierr);
+    ierr = VecSetBlockSize(proj,blocksize);CHKERRQ(ierr);
+    ierr = VecSetFromOptions(proj);CHKERRQ(ierr);
+    ierr = VecSetUp(proj);CHKERRQ(ierr);
+    
+    ierr = VecDestroy(&x);CHKERRQ(ierr);
+    *_proj = proj;
+  }
+  ierr = VecZeroEntries(proj);CHKERRQ(ierr);
+  
+  {
+    Vec      x;
+    PetscInt N,n,bs;
+    
+    ierr = DMCreateGlobalVector(c->dm,&x);CHKERRQ(ierr);
+    ierr = VecGetBlockSize(x,&bs);CHKERRQ(ierr);
+    ierr = VecGetSize(x,&N);CHKERRQ(ierr);
+    ierr = VecGetLocalSize(x,&n);CHKERRQ(ierr);
+    
+    ierr = VecCreate(PetscObjectComm((PetscObject)x),&M);CHKERRQ(ierr);
+    ierr = VecSetSizes(M,n/bs,N/bs);CHKERRQ(ierr);
+    ierr = VecSetFromOptions(M);CHKERRQ(ierr);
+    ierr = VecSetUp(M);CHKERRQ(ierr);
+    
+    ierr = VecDestroy(&x);CHKERRQ(ierr);
+    ierr = VecDuplicate(M,&Mf);CHKERRQ(ierr);
+  }
+
+  
+  m       = c->elbuf_field;
+  eldofs   = c->elbuf_dofs;
+  elcoords = c->elbuf_coor;
+  nbasis   = c->npe;
+  
+  /* project (cell-wise) into degree k, and interpolate result back into field[] */
+  ierr = DGProject(c,k,blocksize,field);CHKERRQ(ierr);
+  
+  
+  ierr = CGProject_AssembleBilinearForm_ScalarMass2d(c,M);CHKERRQ(ierr);
+  
+  ierr = DMGetCoordinatesLocal(c->dm,&coor);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(coor,&LA_coor);CHKERRQ(ierr);
+
+  for (b=0; b<blocksize; b++) {
+    
+    ierr = VecZeroEntries(Mf);CHKERRQ(ierr);
+    
+    for (e=0; e<c->ne; e++) {
+      PetscInt *elnidx = &c->element[nbasis*e];
+      PetscReal *field_e;
+      
+      ierr = SpecFEGetElementQuadratureField(c,blocksize,e,(const PetscReal*)field,&field_e);CHKERRQ(ierr);
+      
+      for (i=0; i<nbasis; i++) {
+        eldofs[i] = elnidx[i];
+      }
+      
+      for (i=0; i<nbasis; i++) {
+        PetscInt nidx = elnidx[i];
+        elcoords[2*i  ] = LA_coor[2*nidx  ];
+        elcoords[2*i+1] = LA_coor[2*nidx+1];
+      }
+      ElementEvaluateGeometry_CellWiseConstant2d(nbasis,elcoords,c->npe_1d,&dJ);
+
+      for (i=0; i<nbasis; i++) {
+        m[i] = c->w[i] * field_e[blocksize * i + b] * dJ;
+      }
+      ierr = VecSetValues(Mf,nbasis,eldofs,m,ADD_VALUES);CHKERRQ(ierr);
+    }
+    ierr = VecAssemblyBegin(Mf);CHKERRQ(ierr);
+    ierr = VecAssemblyEnd(Mf);CHKERRQ(ierr);
+  
+    ierr = VecPointwiseDivide(Mf,Mf,M);CHKERRQ(ierr); // Mf <- Mf/M
+   
+    ierr = VecStrideScatter(Mf,b,proj,INSERT_VALUES);CHKERRQ(ierr);
+  }
+  
+  ierr = VecDestroy(&M);CHKERRQ(ierr);
+  ierr = VecDestroy(&Mf);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(coor,&LA_coor);CHKERRQ(ierr);
+
+  PetscFunctionReturn(0);
+}
 
 /**
  * Function to calculate weighting for the traction
@@ -1021,13 +1403,10 @@ PetscErrorCode SpecFECtxScaleMeshCoords(SpecFECtx c,PetscReal scale[],PetscReal 
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode SpecFECreateStress(SpecFECtx c,PetscReal **_s)
+PetscErrorCode SpecFECreateStress(SpecFECtx c,PetscReal **s)
 {
-  PetscReal      *s;
   PetscErrorCode ierr;
-  
-  ierr = PetscCalloc1(c->ne*c->npe*3,&s);CHKERRQ(ierr);
-  *_s = s;
+  ierr = SpecFECreateQuadratureField(c,3,s);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -1094,6 +1473,7 @@ PetscErrorCode SpecFECtxCreateMesh_SEQ(SpecFECtx c,PetscInt dim,PetscInt mx,Pets
   ierr = PetscMalloc(sizeof(PetscInt)*c->npe*c->dofs,&c->elbuf_dofs);CHKERRQ(ierr);
   
   ierr = SpecFECreateStress(c,&c->sigma);CHKERRQ(ierr);
+  //ierr = SpecFECreateQuadratureField(c,4,&c->gradu);CHKERRQ(ierr);
   
   PetscFunctionReturn(0);
 }
@@ -2748,7 +3128,17 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
           gradu[2] += dNidx[i] * uy[i];
           gradu[3] += dNidy[i] * uy[i];
         }
-        
+      
+      /*
+       // test 3
+      {
+        PetscReal *ge;
+        int b;
+        ierr = SpecFEGetElementQuadratureField(c,4,e,(const PetscReal*)c->gradu,&ge);CHKERRQ(ierr);
+        for (b=0; b<4; b++) { ge[4*q + b] = gradu[b]; }
+      }
+      */
+       
       coor_qp[0] = elcoords[2*q  ];
       coor_qp[1] = elcoords[2*q+1];
 
@@ -2823,6 +3213,9 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
           sigma_trial[TENS2D_XY] += sigma_t_0;
           sigma_trial[TENS2D_YY] += (-sigma_n_0); /* negative in compression */
         }
+
+         /* ================================================================ */
+        ierr = FaultSDFTabulateInterpolation_v2(c,LA_v,&dr_celldata[q],v_plus,v_minus);CHKERRQ(ierr);
 
 
 
@@ -4445,6 +4838,8 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
       VecMax(v,0,&max); PetscPrintf(PETSC_COMM_WORLD,"  [velocity]     max = %+1.4e : min = %+1.4e : l2 = %+1.4e \n",max,min,nrm);
     }
 
+    
+    
     /*
       Write out the u,v,a values at each receiver
     */
@@ -4469,6 +4864,102 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
       char prefix[PETSC_MAX_PATH_LEN];
       ierr = PetscSNPrintf(prefix,PETSC_MAX_PATH_LEN-1,"step-%.4D-sigma.vtu",k);CHKERRQ(ierr);
       ierr = StressView_PV(ctx,(const PetscReal*)ctx->sigma,prefix);CHKERRQ(ierr);
+      
+      /*
+      // test 1
+      ierr = DGProject(ctx,1,3,ctx->sigma);CHKERRQ(ierr);
+      ierr = PetscSNPrintf(prefix,PETSC_MAX_PATH_LEN-1,"step-%.4D-sigma_p.vtu",k);CHKERRQ(ierr);
+      ierr = StressView_PV(ctx,(const PetscReal*)ctx->sigma,prefix);CHKERRQ(ierr);
+      */
+      
+      /*
+       // test 2
+      {
+      PetscReal *_u;
+      PetscReal *uqp;
+      PetscInt e,i,b;
+      
+      SpecFECreateQuadratureField(ctx,2,&uqp);
+      VecGetArray(u,&_u);
+      for (e=0; e<ctx->ne; e++) {
+        PetscInt *elnidx = &ctx->element[ctx->npe*e];
+        for (i=0; i<ctx->npe; i++) {
+          for (b=0; b<2; b++) {
+            uqp[e*ctx->npe * 2 + i*2 + b] = _u[2*elnidx[i] + b];
+          }
+        }
+      }
+      VecRestoreArray(u,&_u);
+      ierr = DGProject(ctx,1,2,uqp);CHKERRQ(ierr);
+      {
+        const char *field_names[] = { "ux", "uy" };
+        ierr = QuadratureFieldDGView_PV(ctx,2,uqp,field_names,"uproj.vtu");CHKERRQ(ierr);
+      }
+      }
+       
+      */
+
+      /*
+       // test 3
+      {
+        Vec proj = NULL;
+        DM dm1;
+        Vec v[4];
+        int b;
+        
+        ierr = CGProjectNative(ctx,1,4,ctx->gradu,&proj);CHKERRQ(ierr);
+        
+        ierr = DMDACreateCompatibleDMDA(ctx->dm,1,&dm1);CHKERRQ(ierr);
+        
+        for (b=0; b<4; b++) { DMCreateGlobalVector(dm1,&v[b]); }
+        PetscObjectSetName((PetscObject)v[0],"uxx");
+        PetscObjectSetName((PetscObject)v[1],"uxy");
+        PetscObjectSetName((PetscObject)v[2],"uyx");
+        PetscObjectSetName((PetscObject)v[3],"uyy");
+        ierr = PetscSNPrintf(vts_fname,PETSC_MAX_PATH_LEN-1,"step-%.4D_gradu_cg.vts",k);CHKERRQ(ierr);
+        ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,vts_fname,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
+        for (b=0; b<4; b++) {
+          ierr = VecStrideGather(proj,b,v[b],INSERT_VALUES);CHKERRQ(ierr);
+          ierr = VecView(v[b],viewer);CHKERRQ(ierr);
+        }
+        ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+        ierr = DMDestroy(&dm1);CHKERRQ(ierr);
+        for (b=0; b<4; b++) {
+          ierr = VecDestroy(&v[b]);CHKERRQ(ierr);
+        }
+        ierr = VecDestroy(&proj);CHKERRQ(ierr);
+      }
+      */
+      
+      //
+       // test 4
+      {
+        Vec proj = NULL;
+        DM dm1;
+        Vec v[3];
+        int b;
+        
+        ierr = CGProjectNative(ctx,0,3,ctx->sigma,&proj);CHKERRQ(ierr);
+        
+        ierr = DMDACreateCompatibleDMDA(ctx->dm,1,&dm1);CHKERRQ(ierr);
+        
+        DMCreateGlobalVector(dm1,&v[0]); PetscObjectSetName((PetscObject)v[0],"sxx");
+        DMCreateGlobalVector(dm1,&v[1]); PetscObjectSetName((PetscObject)v[1],"syy");
+        DMCreateGlobalVector(dm1,&v[2]); PetscObjectSetName((PetscObject)v[2],"sxy");
+        ierr = PetscSNPrintf(vts_fname,PETSC_MAX_PATH_LEN-1,"step-%.4D_cg.vts",k);CHKERRQ(ierr);
+        ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,vts_fname,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
+        for (b=0; b<3; b++) {
+          ierr = VecStrideGather(proj,b,v[b],INSERT_VALUES);CHKERRQ(ierr);
+          ierr = VecView(v[b],viewer);CHKERRQ(ierr);
+        }
+        ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+        ierr = DMDestroy(&dm1);CHKERRQ(ierr);
+        for (b=0; b<3; b++) {
+          ierr = VecDestroy(&v[b]);CHKERRQ(ierr);
+        }
+        ierr = VecDestroy(&proj);CHKERRQ(ierr);
+      }
+      //
     }
     
     if (time >= time_max) {
@@ -4489,6 +4980,8 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
   ierr = VecView(u,viewer);CHKERRQ(ierr);
   ierr = VecView(v,viewer);CHKERRQ(ierr);
   ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+  ierr = PetscSNPrintf(vts_fname,PETSC_MAX_PATH_LEN-1,"step-%.4D-sigma.vtu",k);CHKERRQ(ierr);
+  ierr = StressView_PV(ctx,(const PetscReal*)ctx->sigma,vts_fname);CHKERRQ(ierr);
   
   
   ierr = PetscFree(xr_list);CHKERRQ(ierr);
