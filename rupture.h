@@ -110,6 +110,6 @@ PetscErrorCode FaultSDFTangent(PetscReal coor[],void *ctx,PetscReal t[]);
 PetscErrorCode FaultSDFGetPlusMinusCoor(PetscReal coor[],PetscReal delta,void *ctx,
                                         PetscReal x_plus[],PetscReal x_minus[]);
 
-#define CONST_FAULT_ANGLE_DEG 45.0
+#define CONST_FAULT_ANGLE_DEG 20.0
 
 #endif
