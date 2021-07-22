@@ -2180,7 +2180,7 @@ PetscErrorCode FaultSDFInit_v2(SpecFECtx c)
   */ 
   PetscPrintf(PETSC_COMM_WORLD,"Start SDF Init: ");
   ierr = SDFCreate(&c->sdf);CHKERRQ(ierr); // Allocate the struct object in memory (Might not be necessary as the original structure CTX has already allocated)
-  geometry_selection = 2;// Setup the type of SDF used (third argument of the function): 0-> Horizontal, 1-> Tilted, 2->Sigmoid TBA
+  geometry_selection = 1;// Setup the type of SDF used (third argument of the function): 0-> Horizontal, 1-> Tilted, 2->Sigmoid TBA
   ierr = SDFSetup(c->sdf, 2, geometry_selection);CHKERRQ(ierr);// call of the setup function.
 
   if (geometry_selection == 2)
@@ -2886,7 +2886,9 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   QPntIsotropicElastic *celldata;
   DRVar                *dr_celldata;
   void *the_sdf;
-  
+  Vec proj= NULL;
+  const PetscReal *_proj_sigma;
+
   PetscReal sigma_n_0 = 40.0 * 1.0e6;
   PetscReal sigma_t_0 = 20.0 * 1.0e6;
   PetscReal sigma_n_1 = 40.0 * 1.0e6;
@@ -2905,7 +2907,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   fieldU   = c->elbuf_field2;
   fieldV   = c->elbuf_field3;
   the_sdf  = (void *) c->sdf; 
-  
+ 
   ierr = DMGetCoordinatesLocal(c->dm,&coor);CHKERRQ(ierr);
   ierr = VecGetArrayRead(coor,&LA_coor);CHKERRQ(ierr);
   
@@ -3054,7 +3056,14 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XY] = sigma_vec[TENS2D_XY];
     }
   }
-  
+  // Here would be the projection after updated with elastic increments as it has already been stored on c->sigma.
+  // The function CGProjectNative already takes care of the separation of each component of the stress, the decision is to take either the rewritten 
+  // c->sigma or the proj vector that should be destroyed later
+  //ierr = DGProject(c,2,3,c->sigma);CHKERRQ(ierr);
+
+  ierr = CGProjectNative(c,2,3,c->sigma,&proj);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(proj,&_proj_sigma);CHKERRQ(ierr);
+
   for (e=0; e<c->ne; e++) {
     
     /* get element -> node map */
@@ -3144,9 +3153,29 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
 
       mu_qp     = celldata->mu;
       
+      //To Test
       sigma_vec[TENS2D_XX] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XX];
       sigma_vec[TENS2D_YY] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_YY];
       sigma_vec[TENS2D_XY] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XY];
+
+      
+      // sigma = \sum_nbasis N_i(quadrature_point) sigma_i
+      // Since this is a spectral element method we dont need to 
+      // interpolate from basis to quadrature points, rather we
+      // can simply assign a qp value based on the basis index.
+
+      // sigma_vec[0] = sigma_vec[1] = sigma_vec[2] = 0;
+      // {
+      //   PetscInt nidx = elnidx[q]; // NOTE: index via quad point index rather than basis function index
+      //   sigma_vec[TENS2D_XX] = _proj_sigma[3*nidx + TENS2D_XX]; 
+      //   sigma_vec[TENS2D_YY] = _proj_sigma[3*nidx + TENS2D_YY]; 
+      //   sigma_vec[TENS2D_XY] = _proj_sigma[3*nidx + TENS2D_XY]; 
+      // }
+      // if ((fabs(c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XX]) > 0.0) || (fabs(sigma_vec[TENS2D_XX]) > 0.0))
+      // {
+      //   printf("[%d, %d] >>Buffer: sigma proj %+1.4e, SigmaVec %+1.4e,\n",e,q,c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XX], sigma_vec[TENS2D_XX]);
+
+      // }
 
       sigma_trial[TENS2D_XX] = sigma_vec[TENS2D_XX];
       sigma_trial[TENS2D_YY] = sigma_vec[TENS2D_YY];
@@ -3182,23 +3211,11 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
         ierr = FaultSDFNormal(coor_qp,the_sdf,normal);CHKERRQ(ierr);
         ierr = FaultSDFTangent(coor_qp,the_sdf,tangent);CHKERRQ(ierr);
 
-        /**
-         * If inside the fault zone: 
-         * replace the sigma trial array by a computation of a continuous sigma array in global coordinates.
-         */
-        // ierr = StressAvgElementBoundariesEval_StressAtLocation(c,
-        //                                                        coor_qp, normal, tangent,  
-        //                                                        LA_coor,
-        //                                                        LA_u, 
-        //                                                        LA_v,
-        //                                                        gamma, 
-        //                                                        sigma_trial);CHKERRQ(ierr);
-
         //
         ierr = GlobalToLocalChangeOfBasis(normal, tangent, sigma_trial);CHKERRQ(ierr);
       
-        PetscReal RtgraduR = gradu[0]*normal[0]*tangent[0] + gradu[1]*normal[0]*tangent[1] + 
-                            gradu[2]*normal[1]*tangent[0] + gradu[3]*normal[1]*tangent[1];
+        // PetscReal RtgraduR = gradu[0]*normal[0]*tangent[0] + gradu[1]*normal[0]*tangent[1] + 
+        //                     gradu[2]*normal[1]*tangent[0] + gradu[3]*normal[1]*tangent[1];
 
 
         if (inside_fault_region) { /* add the initial stress state on fault */
@@ -3279,14 +3296,14 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
             /**Self-similar crack - Smoothing for p > 1 */
             if(c->basisorder > 1)
             {
-              ierr = PetscTanHWeighting( &sigma_t,  sigma_t, ttau, phi_p , 4.*(c->basisorder)/c->delta,  0.65*c->delta); CHKERRQ(ierr);
+              ierr = PetscTanHWeighting( &sigma_t,  sigma_t, ttau, phi_p , 7./c->delta,  0.65*c->delta); CHKERRQ(ierr);
               sigma_trial[TENS2D_XY] = sigma_t;
             }
 
             //printf("  sigma_xy %+1.8e\n",sigma_vec[TENS2D_XY]);
             dr_celldata[q].sliding = PETSC_TRUE;
           } else {
-            slip_rate = 0;
+            slip_rate = 0.0;
           }
           
           
@@ -3352,6 +3369,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   ierr = DMRestoreLocalVector(c->dm,&ul);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(c->dm,&fl);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(coor,&LA_coor);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(proj,&_proj_sigma);CHKERRQ(ierr);
+  ierr = VecDestroy(&proj);CHKERRQ(ierr);
 
   PetscFunctionReturn(0);
 }
@@ -3574,7 +3593,7 @@ PetscErrorCode Update_StressGlut2d(SpecFECtx c,Vec u,Vec v,PetscReal dt)
           dr_celldata[q].slip       = slip;
           */
 
-          dr_celldata[q].slip_rate = slip_rate;
+          dr_celldata[q].slip_rate = slip_rate;        
           dr_celldata[q].slip      = slip;
         }
         
@@ -4866,6 +4885,33 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
       ierr = StressView_PV(ctx,(const PetscReal*)ctx->sigma,prefix);CHKERRQ(ierr);
       
       /*
+      Vec proj = NULL, v[3];
+      PetscInt b;
+      DM dm1;
+      ierr = CGProjectNative(ctx,2,3,ctx->sigma,&proj);CHKERRQ(ierr);
+
+      ierr = DMDACreateCompatibleDMDA(ctx->dm,1,&dm1);CHKERRQ(ierr);
+        
+        for (b=0; b<3; b++) { DMCreateGlobalVector(dm1,&v[b]); }
+          PetscObjectSetName((PetscObject)v[0],"sxx");
+          PetscObjectSetName((PetscObject)v[1],"syy");
+          PetscObjectSetName((PetscObject)v[2],"sxy");
+          ierr = PetscSNPrintf(vts_fname,PETSC_MAX_PATH_LEN-1,"step-%.4D_sigmaProj.vts",k);CHKERRQ(ierr);
+          ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,vts_fname,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
+          for (b=0; b<3; b++) {
+            ierr = VecStrideGather(proj,b,v[b],INSERT_VALUES);CHKERRQ(ierr);
+            ierr = VecView(v[b],viewer);CHKERRQ(ierr);
+          }
+          ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+          ierr = DMDestroy(&dm1);CHKERRQ(ierr);
+          for (b=0; b<3; b++) {
+            ierr = VecDestroy(&v[b]);CHKERRQ(ierr);
+          }
+          ierr = VecDestroy(&proj);CHKERRQ(ierr);
+      */
+     
+    
+      /*
       // test 1
       ierr = DGProject(ctx,1,3,ctx->sigma);CHKERRQ(ierr);
       ierr = PetscSNPrintf(prefix,PETSC_MAX_PATH_LEN-1,"step-%.4D-sigma_p.vtu",k);CHKERRQ(ierr);
@@ -4933,32 +4979,32 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
       
       //
        // test 4
-      {
-        Vec proj = NULL;
-        DM dm1;
-        Vec v[3];
-        int b;
+      // {
+      //   Vec proj = NULL;
+      //   DM dm1;
+      //   Vec v[3];
+      //   int b;
         
-        ierr = CGProjectNative(ctx,0,3,ctx->sigma,&proj);CHKERRQ(ierr);
+      //   ierr = CGProjectNative(ctx,0,3,ctx->sigma,&proj);CHKERRQ(ierr);
         
-        ierr = DMDACreateCompatibleDMDA(ctx->dm,1,&dm1);CHKERRQ(ierr);
+      //   ierr = DMDACreateCompatibleDMDA(ctx->dm,1,&dm1);CHKERRQ(ierr);
         
-        DMCreateGlobalVector(dm1,&v[0]); PetscObjectSetName((PetscObject)v[0],"sxx");
-        DMCreateGlobalVector(dm1,&v[1]); PetscObjectSetName((PetscObject)v[1],"syy");
-        DMCreateGlobalVector(dm1,&v[2]); PetscObjectSetName((PetscObject)v[2],"sxy");
-        ierr = PetscSNPrintf(vts_fname,PETSC_MAX_PATH_LEN-1,"step-%.4D_cg.vts",k);CHKERRQ(ierr);
-        ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,vts_fname,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
-        for (b=0; b<3; b++) {
-          ierr = VecStrideGather(proj,b,v[b],INSERT_VALUES);CHKERRQ(ierr);
-          ierr = VecView(v[b],viewer);CHKERRQ(ierr);
-        }
-        ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
-        ierr = DMDestroy(&dm1);CHKERRQ(ierr);
-        for (b=0; b<3; b++) {
-          ierr = VecDestroy(&v[b]);CHKERRQ(ierr);
-        }
-        ierr = VecDestroy(&proj);CHKERRQ(ierr);
-      }
+      //   DMCreateGlobalVector(dm1,&v[0]); PetscObjectSetName((PetscObject)v[0],"sxx");
+      //   DMCreateGlobalVector(dm1,&v[1]); PetscObjectSetName((PetscObject)v[1],"syy");
+      //   DMCreateGlobalVector(dm1,&v[2]); PetscObjectSetName((PetscObject)v[2],"sxy");
+      //   ierr = PetscSNPrintf(vts_fname,PETSC_MAX_PATH_LEN-1,"step-%.4D_cg.vts",k);CHKERRQ(ierr);
+      //   ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,vts_fname,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
+      //   for (b=0; b<3; b++) {
+      //     ierr = VecStrideGather(proj,b,v[b],INSERT_VALUES);CHKERRQ(ierr);
+      //     ierr = VecView(v[b],viewer);CHKERRQ(ierr);
+      //   }
+      //   ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+      //   ierr = DMDestroy(&dm1);CHKERRQ(ierr);
+      //   for (b=0; b<3; b++) {
+      //     ierr = VecDestroy(&v[b]);CHKERRQ(ierr);
+      //   }
+      //   ierr = VecDestroy(&proj);CHKERRQ(ierr);
+      // }
       //
     }
     
@@ -4980,8 +5026,8 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
   ierr = VecView(u,viewer);CHKERRQ(ierr);
   ierr = VecView(v,viewer);CHKERRQ(ierr);
   ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
-  ierr = PetscSNPrintf(vts_fname,PETSC_MAX_PATH_LEN-1,"step-%.4D-sigma.vtu",k);CHKERRQ(ierr);
-  ierr = StressView_PV(ctx,(const PetscReal*)ctx->sigma,vts_fname);CHKERRQ(ierr);
+  //ierr = PetscSNPrintf(vts_fname,PETSC_MAX_PATH_LEN-1,"step-%.4D-sigma.vtu",k);CHKERRQ(ierr);
+  //ierr = StressView_PV(ctx,(const PetscReal*)ctx->sigma,vts_fname);CHKERRQ(ierr);
   
   
   ierr = PetscFree(xr_list);CHKERRQ(ierr);
