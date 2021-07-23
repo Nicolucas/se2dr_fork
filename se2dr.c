@@ -11,9 +11,6 @@
               +(v, Mp delta_1 ) + (grad(v), Ms delta_2 )
               + (v, sigma.n)_ds
               - (v, (-Ms delta_2 ).n)_ds  ==> which will be dropped as we assume the source does not intersect with the boundary
- 
- 
- 
 */
 
 #include <petsc.h>
@@ -3050,6 +3047,55 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       sigma_vec[TENS2D_XX] += c11 * edot_vec[0] + c12 * edot_vec[1];
       sigma_vec[TENS2D_YY] += c21 * edot_vec[0] + c22 * edot_vec[1];
       sigma_vec[TENS2D_XY] += c33 * edot_vec[2];
+
+      
+      /*
+        Adding the background stress onto the stress field
+      */
+      // {
+      //   PetscReal coor_qp[2];
+      //   PetscBool inside_fault_region;
+      //   PetscReal DistOnFault; /**Project coords onto fault to get friction in the case of tilting */
+      //   PetscReal normal[2],tangent[2];
+
+      //   coor_qp[0] = elcoords[2*q  ];
+      //   coor_qp[1] = elcoords[2*q+1];
+
+      //   ierr = FaultSDFNormal(coor_qp,the_sdf, normal);CHKERRQ(ierr);
+      //   ierr = FaultSDFTangent(coor_qp,the_sdf,tangent);CHKERRQ(ierr);
+
+      //   ierr = GlobalToLocalChangeOfBasis(normal, tangent, sigma_vec);CHKERRQ(ierr);
+
+      //   inside_fault_region = PETSC_FALSE;
+
+      //   if (c->sdf->type == 2)
+      //   {
+      //     c->sdf->curve_idx_carrier = c->sdf->idxArray_ClosestFaultNode[e*c->nqp + q];
+      //   }      
+
+      //   ierr = FaultSDFQuery(coor_qp, c->delta, the_sdf, &inside_fault_region);CHKERRQ(ierr);
+
+
+      //   DistOnFault = 0.0;
+      //   ierr = evaluate_DistOnFault_sdf(the_sdf, coor_qp, &DistOnFault);CHKERRQ(ierr);
+
+      //   if (inside_fault_region) { /* add the initial stress state on fault */
+      //     if (fabs(DistOnFault) < 1.5*1.0e3) {
+      //       sigma_vec[TENS2D_XY] += sigma_t_1;
+      //       sigma_vec[TENS2D_YY] += (-sigma_n_1); /* negative in compression */
+      //     } else {
+      //       sigma_vec[TENS2D_XY] += sigma_t_0;
+      //       sigma_vec[TENS2D_YY] += (-sigma_n_0); /* negative in compression */
+      //     }
+      //   } else {
+      //     sigma_vec[TENS2D_XY] += sigma_t_0;
+      //     sigma_vec[TENS2D_YY] += (-sigma_n_0); /* negative in compression */
+      //   }        
+        
+      //   ierr = Local2GlobalChangeOfBasis(normal, tangent, sigma_vec);CHKERRQ(ierr);
+      // }
+
+
       
       c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XX] = sigma_vec[TENS2D_XX];
       c->sigma[e*(c->npe * 3) + q*3 + TENS2D_YY] = sigma_vec[TENS2D_YY];
@@ -3059,9 +3105,9 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   // Here would be the projection after updated with elastic increments as it has already been stored on c->sigma.
   // The function CGProjectNative already takes care of the separation of each component of the stress, the decision is to take either the rewritten 
   // c->sigma or the proj vector that should be destroyed later
-  //ierr = DGProject(c,2,3,c->sigma);CHKERRQ(ierr);
-
-  ierr = CGProjectNative(c,2,3,c->sigma,&proj);CHKERRQ(ierr);
+  // ierr = DGProject(c,1,3,c->sigma);CHKERRQ(ierr);
+  
+  ierr = CGProjectNative(c, c->basisorder, 3, c->sigma, &proj);CHKERRQ(ierr);
   ierr = VecGetArrayRead(proj,&_proj_sigma);CHKERRQ(ierr);
 
   for (e=0; e<c->ne; e++) {
@@ -3098,7 +3144,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
                                                   c->npe_1d,c->dN_dxi,c->dN_deta,
                                                   c->dN_dx,c->dN_dy);
     
-    ierr = PetscMemzero(fe,sizeof(PetscReal)*nbasis*ndof);CHKERRQ(ierr);
+    // ierr = PetscMemzero(fe,sizeof(PetscReal)*nbasis*ndof);CHKERRQ(ierr);
     
     /* get access to element->quadrature points */
     celldata = &c->cell_data[e];
@@ -3106,7 +3152,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
     
 
     for (q=0; q<c->nqp; q++) {
-      PetscReal fac;
+      // PetscReal fac;
       PetscReal mu_qp;
       PetscReal *dNidx,*dNidy;
       PetscReal coor_qp[2];
@@ -3130,13 +3176,13 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
         e_vec[2] += (dNidx[i] * uy[i] + dNidy[i] * ux[i]);
       }
 
-        gradu[0] = gradu[1] = gradu[2] = gradu[3] = 0.0;
-        for (i=0; i<nbasis; i++) {
-          gradu[0] += dNidx[i] * ux[i];
-          gradu[1] += dNidy[i] * ux[i];
-          gradu[2] += dNidx[i] * uy[i];
-          gradu[3] += dNidy[i] * uy[i];
-        }
+      gradu[0] = gradu[1] = gradu[2] = gradu[3] = 0.0;
+      for (i=0; i<nbasis; i++) {
+        gradu[0] += dNidx[i] * ux[i];
+        gradu[1] += dNidy[i] * ux[i];
+        gradu[2] += dNidx[i] * uy[i];
+        gradu[3] += dNidy[i] * uy[i];
+      }
       
       /*
        // test 3
@@ -3153,10 +3199,10 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
 
       mu_qp     = celldata->mu;
       
-      //To Test
-      sigma_vec[TENS2D_XX] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XX];
-      sigma_vec[TENS2D_YY] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_YY];
-      sigma_vec[TENS2D_XY] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XY];
+      //Only DG scheme
+      // sigma_vec[TENS2D_XX] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XX];
+      // sigma_vec[TENS2D_YY] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_YY];
+      // sigma_vec[TENS2D_XY] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XY];
 
       
       // sigma = \sum_nbasis N_i(quadrature_point) sigma_i
@@ -3164,17 +3210,18 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       // interpolate from basis to quadrature points, rather we
       // can simply assign a qp value based on the basis index.
 
-      // sigma_vec[0] = sigma_vec[1] = sigma_vec[2] = 0;
-      // {
-      //   PetscInt nidx = elnidx[q]; // NOTE: index via quad point index rather than basis function index
-      //   sigma_vec[TENS2D_XX] = _proj_sigma[3*nidx + TENS2D_XX]; 
-      //   sigma_vec[TENS2D_YY] = _proj_sigma[3*nidx + TENS2D_YY]; 
-      //   sigma_vec[TENS2D_XY] = _proj_sigma[3*nidx + TENS2D_XY]; 
-      // }
+      sigma_vec[0] = sigma_vec[1] = sigma_vec[2] = 0;
+      {
+        PetscInt nidx = elnidx[q]; // NOTE: index via quad point index rather than basis function index
+        sigma_vec[TENS2D_XX] = _proj_sigma[3*nidx + TENS2D_XX]; 
+        sigma_vec[TENS2D_YY] = _proj_sigma[3*nidx + TENS2D_YY]; 
+        sigma_vec[TENS2D_XY] = _proj_sigma[3*nidx + TENS2D_XY]; 
+      }
+
+
       // if ((fabs(c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XX]) > 0.0) || (fabs(sigma_vec[TENS2D_XX]) > 0.0))
       // {
       //   printf("[%d, %d] >>Buffer: sigma proj %+1.4e, SigmaVec %+1.4e,\n",e,q,c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XX], sigma_vec[TENS2D_XX]);
-
       // }
 
       sigma_trial[TENS2D_XX] = sigma_vec[TENS2D_XX];
@@ -3296,7 +3343,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
             /**Self-similar crack - Smoothing for p > 1 */
             if(c->basisorder > 1)
             {
-              ierr = PetscTanHWeighting( &sigma_t,  sigma_t, ttau, phi_p , 7./c->delta,  0.65*c->delta); CHKERRQ(ierr);
+              ierr = PetscTanHWeighting( &sigma_t,  sigma_t, ttau, phi_p , 12./c->delta,  0.65*c->delta); CHKERRQ(ierr);
               sigma_trial[TENS2D_XY] = sigma_t;
             }
 
@@ -3340,15 +3387,64 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
 
         ierr = Local2GlobalChangeOfBasis(normal, tangent, sigma_trial);CHKERRQ(ierr);
       }
-      
-      
 
       /* These components weren't modified in the horizontal fault case - but they might be in general */
       sigma_vec[TENS2D_XX] = sigma_trial[TENS2D_XX];
       sigma_vec[TENS2D_YY] = sigma_trial[TENS2D_YY];
       /* This component was modified in the horizontal fault case - it's likely it might also be modified in the general case */
       sigma_vec[TENS2D_XY] = sigma_trial[TENS2D_XY];
-      
+
+      c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XX] = sigma_vec[TENS2D_XX];
+      c->sigma[e*(c->npe * 3) + q*3 + TENS2D_YY] = sigma_vec[TENS2D_YY];
+      c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XY] = sigma_vec[TENS2D_XY];
+      }
+    }
+
+  ierr = CGProjectNative(c, c->basisorder, 3, c->sigma, &proj);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(proj,&_proj_sigma);CHKERRQ(ierr);
+
+  for (e=0; e<c->ne; e++) {
+    ierr = PetscMemzero(fe,sizeof(PetscReal)*nbasis*ndof);CHKERRQ(ierr);
+
+    /* get element -> node map */
+    elnidx = &element[nbasis*e];
+    
+    /* generate dofs */
+    for (i=0; i<nbasis; i++) {
+      eldofs[2*i  ] = 2*elnidx[i];
+      eldofs[2*i+1] = 2*elnidx[i]+1;
+    }
+    
+    /* get element coordinates */
+    for (i=0; i<nbasis; i++) {
+      PetscInt nidx = elnidx[i];
+      elcoords[2*i  ] = LA_coor[2*nidx  ];
+      elcoords[2*i+1] = LA_coor[2*nidx+1];
+    }
+    ElementEvaluateGeometry_CellWiseConstant2d(nbasis,elcoords,c->npe_1d,&detJ);
+    ElementEvaluateDerivatives_CellWiseConstant2d(nqp,nbasis,elcoords,
+                                                  c->npe_1d,c->dN_dxi,c->dN_deta,
+                                                  c->dN_dx,c->dN_dy);
+    for (q=0; q<c->nqp; q++) {
+      PetscReal fac;
+      PetscReal *dNidx,*dNidy;
+      dNidx = c->dN_dx[q];
+      dNidy = c->dN_dy[q];
+      PetscReal sigma_vec[3];
+
+
+      // sigma_vec[TENS2D_XX] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XX];
+      // sigma_vec[TENS2D_YY] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_YY];
+      // sigma_vec[TENS2D_XY] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XY];
+
+      sigma_vec[0] = sigma_vec[1] = sigma_vec[2] = 0;
+      {
+        PetscInt nidx = elnidx[q]; // NOTE: index via quad point index rather than basis function index
+        sigma_vec[TENS2D_XX] = _proj_sigma[3*nidx + TENS2D_XX]; 
+        sigma_vec[TENS2D_YY] = _proj_sigma[3*nidx + TENS2D_YY]; 
+        sigma_vec[TENS2D_XY] = _proj_sigma[3*nidx + TENS2D_XY]; 
+      }
+
       fac = detJ * c->w[q];
       for (i=0; i<nbasis; i++) {
         fe[2*i  ] += -fac * (dNidx[i] * sigma_vec[TENS2D_XX] + dNidy[i] * sigma_vec[TENS2D_XY]);
