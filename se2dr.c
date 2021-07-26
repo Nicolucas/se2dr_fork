@@ -2183,6 +2183,9 @@ PetscErrorCode FaultSDFInit_v2(SpecFECtx c)
   if (geometry_selection == 2)
   {
     ierr = PetscCalloc1(c->nqp*c->ne,&c->sdf->idxArray_ClosestFaultNode);CHKERRQ(ierr);
+    ierr = PetscCalloc1(c->nqp*c->ne,&c->sdf->idxArray_SDFphi);CHKERRQ(ierr);
+    ierr = PetscCalloc1(c->nqp*c->ne,&c->sdf->idxArray_DistOnFault);CHKERRQ(ierr);
+
     ierr = initializeZeroSetCurveFault(c->sdf);CHKERRQ(ierr);
     HalfNumPoints = ((GeometryParams) c->sdf->data)->HalfNumPoints;
   }
@@ -2190,7 +2193,6 @@ PetscErrorCode FaultSDFInit_v2(SpecFECtx c)
   the_sdf  = (void *)c->sdf;
 
   for (e=0; e<c->ne; e++) {
-     PetscReal PhiCell = 0.0;
      PetscReal xcell[] = {0.0, 0.0};
      
     /* get element -> node map */
@@ -2224,27 +2226,28 @@ PetscErrorCode FaultSDFInit_v2(SpecFECtx c)
       coor_qp[0] = elcoords[2*q  ];
       coor_qp[1] = elcoords[2*q+1];
 
-      //Populating the entire qp matrix with index directions of the nearest node on the fault, only for geometry type 2
+      // Populating the entire qp matrix with index directions of the nearest node on the fault, only for geometry type 2
+      // Populating Array with the sdf phi and the projected distance onto the fault
       if (geometry_selection == 2)
       {
         find_minimum_idx(coor_qp[0], coor_qp[1], c->sdf->xList, c->sdf->fxList, HalfNumPoints*2+1, &c->sdf->idxArray_ClosestFaultNode[e*c->nqp + q]);
-        c->sdf->curve_idx_carrier = c->sdf->idxArray_ClosestFaultNode[e * c->nqp + q];
+      
+        ierr = Init_evaluate_Sigmoid_sdf(the_sdf,coor_qp, e * c->nqp + q, &c->sdf->idxArray_SDFphi[e*c->nqp + q]);CHKERRQ(ierr);
+        ierr = Init_evaluate_DistOnFault_Sigmoid_sdf(the_sdf, coor_qp, e*c->nqp + q, &c->sdf->idxArray_DistOnFault[e*c->nqp + q]);CHKERRQ(ierr);
       }
 
       modify_stress_state = PETSC_FALSE;
       dr_celldata[q].eid[0] = -1;
       dr_celldata[q].eid[1] = -1;
-      ierr = FaultSDFQuery(coor_qp,c->delta,the_sdf,&modify_stress_state);CHKERRQ(ierr);
-      
-      //ierr = evaluate_sdf(c->sdf, xcell, &PhiCell);CHKERRQ(ierr);
-      //if (fabs(PhiCell) > c->delta) { modify_stress_state = PETSC_FALSE; }      
+      ierr = FaultSDFQuery(coor_qp,c->delta,the_sdf, e*c->nqp + q, &modify_stress_state);CHKERRQ(ierr);
+           
 
       if (modify_stress_state) {
         PetscReal x_plus[2],x_minus[2];
         
         //printf("[e %d , q %d] x_qp %+1.4e , %+1.4e\n",e,q,coor_qp[0],coor_qp[1]);
         
-        ierr = FaultSDFGetPlusMinusCoor(coor_qp,c->delta,the_sdf,x_plus,x_minus);CHKERRQ(ierr);
+        ierr = FaultSDFGetPlusMinusCoor(coor_qp,c->delta,the_sdf, e*c->nqp + q, x_plus,x_minus);CHKERRQ(ierr);
         
         ierr = PointLocation_v2(c,(const PetscReal*)x_plus, &dr_celldata[q].eid[0],&dr_celldata[q].N1_plus,&dr_celldata[q].N2_plus);CHKERRQ(ierr);
         ierr = PointLocation_v2(c,(const PetscReal*)x_minus,&dr_celldata[q].eid[1],&dr_celldata[q].N1_minus,&dr_celldata[q].N2_minus);CHKERRQ(ierr);
@@ -2961,7 +2964,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
 
     cell_flag[e] = PETSC_FALSE;
     for (i=0; i<nbasis; i++) {
-      ierr = FaultSDFQuery(&elcoords[2*i], c->delta, the_sdf, &inside_fault_region);CHKERRQ(ierr);
+      ierr = FaultSDFQuery(&elcoords[2*i], c->delta, the_sdf, e*nbasis + i, &inside_fault_region);CHKERRQ(ierr);
       if (inside_fault_region) {
         cell_flag[e] = PETSC_TRUE;
         break;
@@ -3202,18 +3205,15 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
 
       inside_fault_region = PETSC_FALSE;
 
-      if (c->sdf->type == 2)
-      {
-      c->sdf->curve_idx_carrier = c->sdf->idxArray_ClosestFaultNode[e*c->nqp + q];
-      }      
-      ierr = FaultSDFQuery(coor_qp, c->delta, the_sdf, &inside_fault_region);CHKERRQ(ierr);
+ 
+      ierr = FaultSDFQuery(coor_qp, c->delta, the_sdf, e*c->nqp + q, &inside_fault_region);CHKERRQ(ierr);
 
 
       DistOnFault = 0.0;
-      ierr = evaluate_DistOnFault_sdf(the_sdf, coor_qp, &DistOnFault);CHKERRQ(ierr);
+      ierr = evaluate_DistOnFault_sdf(the_sdf, coor_qp, e*c->nqp + q, &DistOnFault);CHKERRQ(ierr);
 
-      ierr = FaultSDFNormal(coor_qp,the_sdf,normal);CHKERRQ(ierr);
-      ierr = FaultSDFTangent(coor_qp,the_sdf,tangent);CHKERRQ(ierr);
+      ierr = FaultSDFNormal(coor_qp,the_sdf, e*c->nqp + q, normal);CHKERRQ(ierr);
+      ierr = FaultSDFTangent(coor_qp,the_sdf, e*c->nqp + q, tangent);CHKERRQ(ierr);
       ierr = GlobalToLocalChangeOfBasis(normal, tangent, sigma_trial);CHKERRQ(ierr);
 
       if (cell_flag[e]) { /* add the initial stress state on fault */
@@ -3241,18 +3241,18 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
 
 
       //printf("Type, %d,\n", c->sdf->type);
-      //printf("[%+1.4e, %+1.4e, SDF: %+1.4e, DistOnFault: %+1.4e ],\n", coor_qp[0], coor_qp[1], PhiCell, DistOnFault);
+      //printf("[%+1.4e, %+1.4e, DistOnFault: %+1.4e ],\n", coor_qp[0], coor_qp[1],, DistOnFault);
       
       /* Make stress glut corrections here */
       if (inside_fault_region) {
         PetscReal x_plus[2],x_minus[2],v_plus[2],v_minus[2];
-        PetscReal Vplus,Vminus,slip,slip_k,slip_rate;
+        PetscReal Vplus,Vminus,slip,slip_rate;
         PetscReal sigma_n,sigma_t,phi_p;
         PetscReal tau,mu_s,mu_d,mu_friction,T, ttau;
         //printf(">>[e %d , q %d] x_qp %+1.4e , %+1.4e\n",e,q,coor_qp[0],coor_qp[1]);
-        ierr = evaluate_sdf(the_sdf,coor_qp,&phi_p);CHKERRQ(ierr);
+        ierr = evaluate_sdf(the_sdf,coor_qp, e*c->nqp + q, &phi_p);CHKERRQ(ierr);
         
-        ierr = FaultSDFGetPlusMinusCoor(coor_qp,c->delta,the_sdf,x_plus,x_minus);CHKERRQ(ierr);
+        ierr = FaultSDFGetPlusMinusCoor(coor_qp,c->delta,the_sdf, e*c->nqp + q, x_plus,x_minus);CHKERRQ(ierr);
         ierr = FaultSDFTabulateInterpolation_v2(c,LA_v,&dr_celldata[q],v_plus,v_minus);CHKERRQ(ierr);
       
         // PetscReal RtgraduR = gradu[0]*normal[0]*tangent[0] + gradu[1]*normal[0]*tangent[1] + 
@@ -3621,26 +3621,22 @@ PetscErrorCode Update_StressGlut2d(SpecFECtx c,Vec u,Vec v,PetscReal dt)
       coor_qp[1] = elcoords[2*q+1];
       
       inside_fault_region = PETSC_FALSE;
-      if (c->sdf->type == 2)
-      {
-      c->sdf->curve_idx_carrier = c->sdf->idxArray_ClosestFaultNode[e*c->nqp + q];
-      }
-      ierr = FaultSDFQuery(coor_qp,c->delta,(void *)c->sdf,&inside_fault_region);CHKERRQ(ierr);
-      //if (fabs(x_cell[1]) > c->delta) { inside_fault_region = PETSC_FALSE; }
-      
+
+      ierr = FaultSDFQuery(coor_qp,c->delta,(void *)c->sdf, e*c->nqp + q, &inside_fault_region);CHKERRQ(ierr);
+
       /* Make stress glut corrections here */
       if (inside_fault_region) {
         PetscReal x_plus[2],x_minus[2],plus[2],minus[2];
         PetscReal normal[2],tangent[2],Uplus,Uminus,Vplus,Vminus,slip,slip_rate,phi_p;
         
-        ierr = evaluate_sdf((void *)c->sdf,coor_qp,&phi_p);CHKERRQ(ierr);
+        ierr = evaluate_sdf((void *)c->sdf,coor_qp, e*c->nqp + q, &phi_p);CHKERRQ(ierr);
         
-        ierr = FaultSDFGetPlusMinusCoor(coor_qp,c->delta,(void *)c->sdf,x_plus,x_minus);CHKERRQ(ierr);
+        ierr = FaultSDFGetPlusMinusCoor(coor_qp,c->delta,(void *)c->sdf, e*c->nqp + q, x_plus,x_minus);CHKERRQ(ierr);
         
         /* ================================================================ */
         ierr = FaultSDFTabulateInterpolation_v2(c,LA_v,&dr_celldata[q],plus,minus);CHKERRQ(ierr);
-        ierr = FaultSDFNormal(coor_qp,(void *)c->sdf,normal);CHKERRQ(ierr);
-        ierr = FaultSDFTangent(coor_qp,(void *)c->sdf,tangent);CHKERRQ(ierr);
+        ierr = FaultSDFNormal(coor_qp,(void *)c->sdf, e*c->nqp + q, normal);CHKERRQ(ierr);
+        ierr = FaultSDFTangent(coor_qp,(void *)c->sdf, e*c->nqp + q, tangent);CHKERRQ(ierr);
         
         /* Resolve velocities at delta(+,-) onto fault */
         {
@@ -3664,8 +3660,8 @@ PetscErrorCode Update_StressGlut2d(SpecFECtx c,Vec u,Vec v,PetscReal dt)
         
         /* ================================================================ */
         ierr = FaultSDFTabulateInterpolation_v2(c,LA_u,&dr_celldata[q],plus,minus);CHKERRQ(ierr);
-        ierr = FaultSDFNormal(coor_qp,(void *)c->sdf,normal);CHKERRQ(ierr);
-        ierr = FaultSDFTangent(coor_qp,(void *)c->sdf,tangent);CHKERRQ(ierr);
+        ierr = FaultSDFNormal(coor_qp,(void *)c->sdf, e*c->nqp + q, normal);CHKERRQ(ierr);
+        ierr = FaultSDFTangent(coor_qp,(void *)c->sdf, e*c->nqp + q, tangent);CHKERRQ(ierr);
         
         /* Resolve displacement at delta(+,-) onto fault */
         {
