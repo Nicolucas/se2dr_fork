@@ -3391,8 +3391,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
     } // Loop over the quadrature points: END
   } // Loop over the elements: END
 
-  ierr = CGProjectNative(c, c->basisorder, 3, c->sigma, &proj);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(proj,&_proj_sigma);CHKERRQ(ierr);
+  //ierr = CGProjectNative(c, c->basisorder, 3, c->sigma, &proj);CHKERRQ(ierr);
+  //ierr = VecGetArrayRead(proj,&_proj_sigma);CHKERRQ(ierr);
 
 
   if (step%10 == 0) {
@@ -3436,17 +3436,17 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       dNidy = c->dN_dy[q];
       PetscReal sigma_vec[3];
 
-      // sigma_vec[TENS2D_XX] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XX];
-      // sigma_vec[TENS2D_YY] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_YY];
-      // sigma_vec[TENS2D_XY] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XY];
+      sigma_vec[TENS2D_XX] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XX];
+      sigma_vec[TENS2D_YY] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_YY];
+      sigma_vec[TENS2D_XY] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XY];
 
-      sigma_vec[0] = sigma_vec[1] = sigma_vec[2] = 0;
-      {
-        PetscInt nidx = elnidx[q]; // NOTE: index via quad point index rather than basis function index
-        sigma_vec[TENS2D_XX] = _proj_sigma[3*nidx + TENS2D_XX]; 
-        sigma_vec[TENS2D_YY] = _proj_sigma[3*nidx + TENS2D_YY]; 
-        sigma_vec[TENS2D_XY] = _proj_sigma[3*nidx + TENS2D_XY]; 
-      }
+      // sigma_vec[0] = sigma_vec[1] = sigma_vec[2] = 0;
+      // {
+      //   PetscInt nidx = elnidx[q]; // NOTE: index via quad point index rather than basis function index
+      //   sigma_vec[TENS2D_XX] = _proj_sigma[3*nidx + TENS2D_XX]; 
+      //   sigma_vec[TENS2D_YY] = _proj_sigma[3*nidx + TENS2D_YY]; 
+      //   sigma_vec[TENS2D_XY] = _proj_sigma[3*nidx + TENS2D_XY]; 
+      // }
 
       fac = detJ * c->w[q];
       for (i=0; i<nbasis; i++) {
