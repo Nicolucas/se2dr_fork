@@ -2240,7 +2240,7 @@ PetscErrorCode FaultSDFInit_v2(SpecFECtx c)
       dr_celldata[q].eid[0] = -1;
       dr_celldata[q].eid[1] = -1;
       ierr = FaultSDFQuery(coor_qp,c->delta,the_sdf, e*c->nqp + q, &modify_stress_state);CHKERRQ(ierr);
-           
+
 
       if (modify_stress_state) {
         PetscReal x_plus[2],x_minus[2];
@@ -2266,6 +2266,139 @@ PetscErrorCode FaultSDFInit_v2(SpecFECtx c)
   
   PetscFunctionReturn(0);
 }
+
+/* Initialize quadrature points based on cell overlap condition */
+PetscErrorCode FaultSDFInit_v3(SpecFECtx c)
+{
+  PetscErrorCode  ierr;
+  PetscInt        e,i,q,nbasis,nqp,ndof;
+  Vec             coor;
+  const PetscReal *LA_coor;
+  PetscInt        *element,*elnidx,*eldofs;
+  PetscReal       *elcoords;
+  DRVar           *dr_celldata;
+  PetscReal       factor;
+  PetscInt        factor_i;
+  void * the_sdf;
+  int geometry_selection;
+  int HalfNumPoints;
+  PetscBool modify_stress_state;  
+  
+  eldofs   = c->elbuf_dofs;
+  elcoords = c->elbuf_coor;
+  nbasis   = c->npe;
+  nqp      = c->nqp;
+  ndof     = c->dofs;
+  element  = c->element;  
+  
+  factor = ((PetscReal)(c->ne)) * 0.1;
+  factor_i = (PetscInt)factor;
+  if (factor_i == 0) { factor_i = 1; }  
+  
+  ierr = DMGetCoordinatesLocal(c->dm,&coor);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(coor,&LA_coor);CHKERRQ(ierr);  
+  
+  /** SDF Initialization
+   * Creation,
+   * Possible fill in of the BruteForce™ approach of acquiring the SDF at every quadrature point per element in the grid.
+  */ 
+  PetscPrintf(PETSC_COMM_WORLD,"Start SDF Init (v3): ");
+  ierr = SDFCreate(&c->sdf);CHKERRQ(ierr); // Allocate the struct object in memory (Might not be necessary as the original structure CTX has already allocated)
+  geometry_selection = 1;// Setup the type of SDF used (third argument of the function): 0-> Horizontal, 1-> Tilted, 2->Sigmoid TBA
+  ierr = SDFSetup(c->sdf, 2, geometry_selection);CHKERRQ(ierr);// call of the setup function.  
+  
+  if (geometry_selection == 2)
+  {
+    ierr = PetscCalloc1(c->nqp*c->ne,&c->sdf->idxArray_ClosestFaultNode);CHKERRQ(ierr);
+    ierr = PetscCalloc1(c->nqp*c->ne,&c->sdf->idxArray_SDFphi);CHKERRQ(ierr);
+    ierr = PetscCalloc1(c->nqp*c->ne,&c->sdf->idxArray_DistOnFault);CHKERRQ(ierr);
+
+    
+    ierr = initializeZeroSetCurveFault(c->sdf);CHKERRQ(ierr);
+    HalfNumPoints = ((GeometryParams) c->sdf->data)->HalfNumPoints;
+  }  
+  
+  the_sdf  = (void *)c->sdf;  
+
+  for (e=0; e<c->ne; e++) {
+    /* get element -> node map */
+    elnidx = &element[nbasis*e];    
+
+    /* generate dofs */
+    for (i=0; i<nbasis; i++) {
+      eldofs[2*i  ] = 2*elnidx[i];
+      eldofs[2*i+1] = 2*elnidx[i]+1;
+    }    
+    
+    /* get element coordinates */
+    for (i=0; i<nbasis; i++) {
+      PetscInt nidx = elnidx[i];
+      elcoords[2*i  ] = LA_coor[2*nidx  ];
+      elcoords[2*i+1] = LA_coor[2*nidx+1];
+    }    
+    
+    /* Determine if cell overlaps finite fault */
+    modify_stress_state = PETSC_FALSE;
+    for (i=0; i<nbasis; i++) {
+      PetscReal coor_qp[2];      
+      
+      coor_qp[0] = elcoords[2*i  ];
+      coor_qp[1] = elcoords[2*i+1]; 
+
+      ierr = FaultSDFQuery(coor_qp,c->delta,the_sdf, e*nbasis + i, &modify_stress_state);CHKERRQ(ierr);
+      if (modify_stress_state) break;
+    }    
+    
+    ierr = SpecFECtxGetDRCellData(c,e,&dr_celldata);CHKERRQ(ierr);  
+
+    if (geometry_selection == 2){
+      for (q=0; q<c->nqp; q++) {
+          PetscReal coor_qp[2];        
+          
+          coor_qp[0] = elcoords[2*q  ];
+          coor_qp[1] = elcoords[2*q+1];        
+          
+          // Populating the entire qp matrix with index directions of the nearest node on the fault, only for geometry type 2
+          // Populating Array with the sdf phi and the projected distance onto the fault
+          
+          find_minimum_idx(coor_qp[0], coor_qp[1], c->sdf->xList, c->sdf->fxList, HalfNumPoints*2+1, &c->sdf->idxArray_ClosestFaultNode[e*c->nqp + q]);
+        
+          ierr = Init_evaluate_Sigmoid_sdf(the_sdf,coor_qp, e * c->nqp + q, &c->sdf->idxArray_SDFphi[e*c->nqp + q]);CHKERRQ(ierr);
+          ierr = Init_evaluate_DistOnFault_Sigmoid_sdf(the_sdf, coor_qp, e*c->nqp + q, &c->sdf->idxArray_DistOnFault[e*c->nqp + q]);CHKERRQ(ierr);
+        }      
+    }
+
+    /* Modify all quadrature points contained within a cell overlapping the finite fault */
+    if (modify_stress_state) {
+      for (q=0; q<c->nqp; q++) {
+        PetscReal coor_qp[2];        
+        
+        coor_qp[0] = elcoords[2*q  ];
+        coor_qp[1] = elcoords[2*q+1];          
+        
+        modify_stress_state = PETSC_FALSE;
+        dr_celldata[q].eid[0] = -1;
+        dr_celldata[q].eid[1] = -1;        
+        {
+          PetscReal x_plus[2],x_minus[2];          
+          ierr = FaultSDFGetPlusMinusCoor(coor_qp, c->delta, the_sdf, e*c->nqp + q, x_plus, x_minus);CHKERRQ(ierr);
+          
+          ierr = PointLocation_v2(c,(const PetscReal*)x_plus, &dr_celldata[q].eid[0],&dr_celldata[q].N1_plus,&dr_celldata[q].N2_plus);CHKERRQ(ierr);
+          ierr = PointLocation_v2(c,(const PetscReal*)x_minus,&dr_celldata[q].eid[1],&dr_celldata[q].N1_minus,&dr_celldata[q].N2_minus);CHKERRQ(ierr);
+        }
+      }
+    }
+
+    if (e%factor_i == 0) {
+      printf("[Fault point location] Done element %d of %d\n",e,c->ne);
+    }
+  }
+  printf("[Fault point location-v3] Finished\n");  
+
+  ierr = VecRestoreArrayRead(coor,&LA_coor);CHKERRQ(ierr);  
+  PetscFunctionReturn(0);
+}
+
 
 /* Use tabulated basis at delta(+,-) to interpolate velocity */
 PetscErrorCode FaultSDFTabulateInterpolation_v2(SpecFECtx c,const PetscReal LA_v[],DRVar *dr_celldata_q,
@@ -3395,17 +3528,17 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   //ierr = VecGetArrayRead(proj,&_proj_sigma);CHKERRQ(ierr);
 
 
-  if (step%10 == 0) {
-    char prefix[PETSC_MAX_PATH_LEN];
-    ierr = DGProject(c, c->basisorder, 3, sigma_tilde);CHKERRQ(ierr);
-    ierr = DGProject(c, c->basisorder, 3, sigma_tilde2);CHKERRQ(ierr);
+  // if (step%10 == 0) {
+  //   char prefix[PETSC_MAX_PATH_LEN];
+  //   ierr = DGProject(c, c->basisorder, 3, sigma_tilde);CHKERRQ(ierr);
+  //   ierr = DGProject(c, c->basisorder, 3, sigma_tilde2);CHKERRQ(ierr);
     
-    ierr = PetscSNPrintf(prefix,PETSC_MAX_PATH_LEN-1,"step-%.4D-sigma_tilde_APre.vtu",step);CHKERRQ(ierr);
-    ierr = StressView_PV(c,(const PetscReal*)sigma_tilde,prefix);CHKERRQ(ierr);
+  //   ierr = PetscSNPrintf(prefix,PETSC_MAX_PATH_LEN-1,"step-%.4D-sigma_tilde_APre.vtu",step);CHKERRQ(ierr);
+  //   ierr = StressView_PV(c,(const PetscReal*)sigma_tilde,prefix);CHKERRQ(ierr);
 
-    ierr = PetscSNPrintf(prefix,PETSC_MAX_PATH_LEN-1,"step-%.4D-sigma_tilde_BPost.vtu",step);CHKERRQ(ierr);
-    ierr = StressView_PV(c,(const PetscReal*)sigma_tilde2,prefix);CHKERRQ(ierr);
-  }
+  //   ierr = PetscSNPrintf(prefix,PETSC_MAX_PATH_LEN-1,"step-%.4D-sigma_tilde_BPost.vtu",step);CHKERRQ(ierr);
+  //   ierr = StressView_PV(c,(const PetscReal*)sigma_tilde2,prefix);CHKERRQ(ierr);
+  // }
 
   for (e=0; e<c->ne; e++) {
     ierr = PetscMemzero(fe,sizeof(PetscReal)*nbasis*ndof);CHKERRQ(ierr);
@@ -4810,8 +4943,7 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
   PetscPrintf(PETSC_COMM_WORLD,"[se2dr] using fault delta = %1.4e\n",ctx->delta);
   PetscPrintf(PETSC_COMM_WORLD,"[se2dr] elements across fault = %1.4e\n",2.0 * ctx->delta/dy);
   
-  //ierr = FaultSDFInit_v1(ctx);CHKERRQ(ierr);
-  ierr = FaultSDFInit_v2(ctx);CHKERRQ(ierr);
+  ierr = FaultSDFInit_v3(ctx);CHKERRQ(ierr);
   
   /*
    Specify the material properties for the domain.
