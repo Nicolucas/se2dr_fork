@@ -3022,6 +3022,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   Vec proj= NULL;
   const PetscReal *_proj_sigma;
 
+  PetscInt OrderLimiter = 0;
+
   PetscReal *sigma_tilde,*sigma_tilde2;
   PetscBool *cell_flag;
 
@@ -3212,10 +3214,10 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   // Here would be the projection after updated with elastic increments as it has already been stored on c->sigma.
   // The function CGProjectNative already takes care of the separation of each component of the stress, the decision is to take either the rewritten 
   // c->sigma or the proj vector that should be destroyed later
-  // ierr = DGProject(c,1,3,c->sigma);CHKERRQ(ierr);
-  
-  ierr = CGProjectNative(c, c->basisorder, 3, c->sigma, &proj);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(proj,&_proj_sigma);CHKERRQ(ierr);
+  if(c->basisorder > OrderLimiter){
+    ierr = CGProjectNative(c, c->basisorder, 3, c->sigma, &proj);CHKERRQ(ierr);
+    ierr = VecGetArrayRead(proj,&_proj_sigma);CHKERRQ(ierr);
+  }
 
   for (e=0; e<c->ne; e++) {
     
@@ -3308,24 +3310,24 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       mu_qp     = celldata->mu;
       
       //Only DG scheme
-      // sigma_vec[TENS2D_XX] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XX];
-      // sigma_vec[TENS2D_YY] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_YY];
-      // sigma_vec[TENS2D_XY] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XY];
+      sigma_vec[TENS2D_XX] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XX];
+      sigma_vec[TENS2D_YY] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_YY];
+      sigma_vec[TENS2D_XY] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XY];
 
       
       // sigma = \sum_nbasis N_i(quadrature_point) sigma_i
       // Since this is a spectral element method we dont need to 
       // interpolate from basis to quadrature points, rather we
       // can simply assign a qp value based on the basis index.
-
-      sigma_vec[0] = sigma_vec[1] = sigma_vec[2] = 0;
-      {
-        PetscInt nidx = elnidx[q]; // NOTE: index via quad point index rather than basis function index
-        sigma_vec[TENS2D_XX] = _proj_sigma[3*nidx + TENS2D_XX]; 
-        sigma_vec[TENS2D_YY] = _proj_sigma[3*nidx + TENS2D_YY]; 
-        sigma_vec[TENS2D_XY] = _proj_sigma[3*nidx + TENS2D_XY]; 
+      if(c->basisorder > OrderLimiter){
+        sigma_vec[0] = sigma_vec[1] = sigma_vec[2] = 0;
+        {
+          PetscInt nidx = elnidx[q]; // NOTE: index via quad point index rather than basis function index
+          sigma_vec[TENS2D_XX] = _proj_sigma[3*nidx + TENS2D_XX]; 
+          sigma_vec[TENS2D_YY] = _proj_sigma[3*nidx + TENS2D_YY]; 
+          sigma_vec[TENS2D_XY] = _proj_sigma[3*nidx + TENS2D_XY]; 
+        }
       }
-
 
       // if ((fabs(c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XX]) > 0.0) || (fabs(sigma_vec[TENS2D_XX]) > 0.0))
       // {
@@ -3445,7 +3447,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
             exit(1);
           }
           
-          if (T > tau) {
+          if ((T > tau) || (dr_celldata[q].sliding == PETSC_TRUE)) {
             
             /**Antiparallel condition between slip rate and critical shear */
             ttau = tau;
@@ -3456,9 +3458,9 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
             sigma_trial[TENS2D_XY] = ttau;
 
             /**Self-similar crack - Smoothing for p > 1 */
-            if(c->basisorder > 1)
+            if(c->basisorder > OrderLimiter)
             {
-              ierr = PetscTanHWeighting( &sigma_t,  sigma_t, ttau, phi_p , 12./c->delta,  0.65*c->delta); CHKERRQ(ierr);
+              ierr = PetscTanHWeighting( &sigma_t,  sigma_t, ttau, phi_p , (3.*c->basisorder)/c->delta,  0.65*c->delta); CHKERRQ(ierr);
               sigma_trial[TENS2D_XY] = sigma_t;
             }
 
@@ -3601,7 +3603,9 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   ierr = DMRestoreLocalVector(c->dm,&ul);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(c->dm,&fl);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(coor,&LA_coor);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(proj,&_proj_sigma);CHKERRQ(ierr);
+  if(c->basisorder > OrderLimiter){
+    ierr = VecRestoreArrayRead(proj,&_proj_sigma);CHKERRQ(ierr);
+  }
   ierr = VecDestroy(&proj);CHKERRQ(ierr);
 
   ierr = PetscFree(sigma_tilde2);CHKERRQ(ierr);
