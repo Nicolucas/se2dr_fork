@@ -3022,7 +3022,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   Vec proj= NULL;
   const PetscReal *_proj_sigma;
 
-  PetscInt OrderLimiter = 0;
+  PetscInt OrderLimiter = 4;
 
   PetscReal *sigma_tilde,*sigma_tilde2;
   PetscBool *cell_flag;
@@ -3307,7 +3307,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       coor_qp[0] = elcoords[2*q  ];
       coor_qp[1] = elcoords[2*q+1];
 
-      mu_qp     = celldata->mu;
+      mu_qp      = celldata->mu;
       
       //Only DG scheme
       sigma_vec[TENS2D_XX] = c->sigma[e*(c->npe * 3) + q*3 + TENS2D_XX];
@@ -3351,15 +3351,11 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       ierr = FaultSDFTangent(coor_qp,the_sdf, e*c->nqp + q, tangent);CHKERRQ(ierr);
       ierr = GlobalToLocalChangeOfBasis(normal, tangent, sigma_trial);CHKERRQ(ierr);
 
-      if (cell_flag[e]) { /* add the initial stress state on fault */
-
-        if (fabs(DistOnFault) < 1.5*1.0e3) {
-          sigma_trial[TENS2D_XY] += sigma_t_1;
-          sigma_trial[TENS2D_YY] += (-sigma_n_1); /* negative in compression */
-        } else {
-          sigma_trial[TENS2D_XY] += sigma_t_0;
-          sigma_trial[TENS2D_YY] += (-sigma_n_0); /* negative in compression */
-        }
+      
+      /* add the initial stress state on fault */
+      if (fabs(DistOnFault) < 1.5*1.0e3 && cell_flag[e]) {
+        sigma_trial[TENS2D_XY] += sigma_t_1;
+        sigma_trial[TENS2D_YY] += (-sigma_n_1); /* negative in compression */
       } else {
         sigma_trial[TENS2D_XY] += sigma_t_0;
         sigma_trial[TENS2D_YY] += (-sigma_n_0); /* negative in compression */
@@ -3379,7 +3375,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       //printf("[%+1.4e, %+1.4e, DistOnFault: %+1.4e ],\n", coor_qp[0], coor_qp[1],, DistOnFault);
       
       /* Make stress glut corrections here */
-      if (inside_fault_region) {
+      if (cell_flag[e]) {
         PetscReal x_plus[2],x_minus[2],v_plus[2],v_minus[2];
         PetscReal Vplus,Vminus,slip,slip_rate;
         PetscReal sigma_n,sigma_t,phi_p;
@@ -3392,8 +3388,6 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       
         // PetscReal RtgraduR = gradu[0]*normal[0]*tangent[0] + gradu[1]*normal[0]*tangent[1] + 
         //                     gradu[2]*normal[1]*tangent[0] + gradu[3]*normal[1]*tangent[1];
-
-
 
          /* ================================================================ */
         ierr = FaultSDFTabulateInterpolation_v2(c,LA_v,&dr_celldata[q],v_plus,v_minus);CHKERRQ(ierr);
@@ -3460,7 +3454,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
             /**Self-similar crack - Smoothing for p > 1 */
             if(c->basisorder > OrderLimiter)
             {
-              ierr = PetscTanHWeighting( &sigma_t,  sigma_t, ttau, phi_p , (3.*c->basisorder)/c->delta,  0.65*c->delta); CHKERRQ(ierr);
+              ierr = PetscTanHWeighting( &sigma_t,  sigma_t, ttau, phi_p , (4.*c->basisorder)/c->delta,  0.65*c->delta); CHKERRQ(ierr);
               sigma_trial[TENS2D_XY] = sigma_t;
             }
 
@@ -3499,14 +3493,10 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
       }
 
 
-      if (cell_flag[e]) { /* remove the initial stress state on fault */
-        if (fabs(DistOnFault) < 1.5*1.0e3) {
-          sigma_trial[TENS2D_XY] -= sigma_t_1;
-          sigma_trial[TENS2D_YY] -= (-sigma_n_1); /* negative in compression */
-        } else {
-          sigma_trial[TENS2D_XY] -= sigma_t_0;
-          sigma_trial[TENS2D_YY] -= (-sigma_n_0); /* negative in compression */
-        }
+      /* add the initial stress state on fault */
+      if (fabs(DistOnFault) < 1.5*1.0e3 && cell_flag[e]) {
+        sigma_trial[TENS2D_XY] -= sigma_t_1;
+        sigma_trial[TENS2D_YY] -= (-sigma_n_1); /* negative in compression */
       } else {
         sigma_trial[TENS2D_XY] -= sigma_t_0;
         sigma_trial[TENS2D_YY] -= (-sigma_n_0); /* negative in compression */
