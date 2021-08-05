@@ -2376,9 +2376,9 @@ PetscErrorCode FaultSDFInit_v3(SpecFECtx c)
         coor_qp[0] = elcoords[2*q  ];
         coor_qp[1] = elcoords[2*q+1];          
         
-        modify_stress_state = PETSC_FALSE;
         dr_celldata[q].eid[0] = -1;
-        dr_celldata[q].eid[1] = -1;        
+        dr_celldata[q].eid[1] = -1;   
+        dr_celldata[q].sliding = PETSC_FALSE;   
         {
           PetscReal x_plus[2],x_minus[2];          
           ierr = FaultSDFGetPlusMinusCoor(coor_qp, c->delta, the_sdf, e*c->nqp + q, x_plus, x_minus);CHKERRQ(ierr);
@@ -3022,7 +3022,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   Vec proj= NULL;
   const PetscReal *_proj_sigma;
 
-  PetscInt OrderLimiter = 4;
+  PetscInt OrderLimiter = 10; //0 means blend it and apply CG proyection always
 
   PetscReal *sigma_tilde,*sigma_tilde2;
   PetscBool *cell_flag;
@@ -3441,8 +3441,13 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
             exit(1);
           }
           
-          if ((T > tau) || (dr_celldata[q].sliding == PETSC_TRUE)) {
-            
+
+          //Sliding flag changed forever when yielding is reached for the first time          
+          if(T > tau){
+            dr_celldata[q].sliding = PETSC_TRUE;
+          }
+
+          if (dr_celldata[q].sliding == PETSC_TRUE) {
             /**Antiparallel condition between slip rate and critical shear */
             ttau = tau;
             if ( sigma_t < 0.0) //slip_rate=v(+)-v(-) defined following Dalguer
@@ -3452,14 +3457,13 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
             sigma_trial[TENS2D_XY] = ttau;
 
             /**Self-similar crack - Smoothing for p > 1 */
-            if(c->basisorder > OrderLimiter)
+            if(c->basisorder > 0) //OrderLimiter
             {
               ierr = PetscTanHWeighting( &sigma_t,  sigma_t, ttau, phi_p , (4.*c->basisorder)/c->delta,  0.65*c->delta); CHKERRQ(ierr);
               sigma_trial[TENS2D_XY] = sigma_t;
             }
 
             //printf("  sigma_xy %+1.8e\n",sigma_vec[TENS2D_XY]);
-            dr_celldata[q].sliding = PETSC_TRUE;
           } else {
             slip_rate = 0.0;
           }
