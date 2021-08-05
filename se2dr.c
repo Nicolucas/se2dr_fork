@@ -3024,7 +3024,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
 
   PetscInt OrderLimiter = 10; //0 means blend it and apply CG proyection always
 
-  PetscReal *sigma_tilde,*sigma_tilde2;
+  PetscReal *sigma_tilde,*sigma_tilde2, *sigma_tilde3;
   PetscBool *cell_flag;
 
   PetscReal sigma_n_0 = 40.0 * 1.0e6;
@@ -3069,8 +3069,9 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   vy = &fieldV[nbasis];
   
   PetscCalloc1(c->ne,&cell_flag);
-  SpecFECreateQuadratureField(c,3,&sigma_tilde);
-  SpecFECreateQuadratureField(c,3,&sigma_tilde2);
+  SpecFECreateQuadratureField(c,3,&sigma_tilde); // Stress after backround stress is added
+  SpecFECreateQuadratureField(c,3,&sigma_tilde2); // Stress after the yielding is evaluated
+  SpecFECreateQuadratureField(c,3,&sigma_tilde3); // Stress after the background stress is removed
 
 
   for (e=0; e<c->ne; e++) {
@@ -3493,7 +3494,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
         _sigma_store[TENS2D_XX] = sigma_trial[TENS2D_XX];
         _sigma_store[TENS2D_YY] = sigma_trial[TENS2D_YY];
         _sigma_store[TENS2D_XY] = sigma_trial[TENS2D_XY];
-        ierr = Local2GlobalChangeOfBasis(normal, tangent, _sigma_store);CHKERRQ(ierr);
+        //ierr = Local2GlobalChangeOfBasis(normal, tangent, _sigma_store);CHKERRQ(ierr);
       }
 
 
@@ -3505,7 +3506,14 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
         sigma_trial[TENS2D_XY] -= sigma_t_0;
         sigma_trial[TENS2D_YY] -= (-sigma_n_0); /* negative in compression */
       } 
-      
+
+      {
+        PetscReal *_sigma_store = &sigma_tilde3[e*(c->npe * 3) + q*3];
+        _sigma_store[TENS2D_XX] = sigma_trial[TENS2D_XX];
+        _sigma_store[TENS2D_YY] = sigma_trial[TENS2D_YY];
+        _sigma_store[TENS2D_XY] = sigma_trial[TENS2D_XY];
+      }
+
       ierr = Local2GlobalChangeOfBasis(normal, tangent, sigma_trial);CHKERRQ(ierr);
 
       /* These components weren't modified in the horizontal fault case - but they might be in general */
@@ -3524,17 +3532,21 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   //ierr = VecGetArrayRead(proj,&_proj_sigma);CHKERRQ(ierr);
 
 
-  // if (step%10 == 0) {
-  //   char prefix[PETSC_MAX_PATH_LEN];
-  //   ierr = DGProject(c, c->basisorder, 3, sigma_tilde);CHKERRQ(ierr);
-  //   ierr = DGProject(c, c->basisorder, 3, sigma_tilde2);CHKERRQ(ierr);
+  if (step%10 == 0) {
+    char prefix[PETSC_MAX_PATH_LEN];
     
-  //   ierr = PetscSNPrintf(prefix,PETSC_MAX_PATH_LEN-1,"step-%.4D-sigma_tilde_APre.vtu",step);CHKERRQ(ierr);
-  //   ierr = StressView_PV(c,(const PetscReal*)sigma_tilde,prefix);CHKERRQ(ierr);
+    //   ierr = DGProject(c, c->basisorder, 3, sigma_tilde);CHKERRQ(ierr);
+    //   ierr = DGProject(c, c->basisorder, 3, sigma_tilde2);CHKERRQ(ierr);
+    ierr = DGProject(c, c->basisorder, 3, sigma_tilde3);CHKERRQ(ierr);
 
-  //   ierr = PetscSNPrintf(prefix,PETSC_MAX_PATH_LEN-1,"step-%.4D-sigma_tilde_BPost.vtu",step);CHKERRQ(ierr);
-  //   ierr = StressView_PV(c,(const PetscReal*)sigma_tilde2,prefix);CHKERRQ(ierr);
-  // }
+      
+    //  ierr = PetscSNPrintf(prefix,PETSC_MAX_PATH_LEN-1,"step-%.4D-sigma_tilde_APre.vtu",step);CHKERRQ(ierr);
+    //  ierr = StressView_PV(c,(const PetscReal*)sigma_tilde,prefix);CHKERRQ(ierr);
+    //  ierr = PetscSNPrintf(prefix,PETSC_MAX_PATH_LEN-1,"step-%.4D-sigma_tilde_BPost.vtu",step);CHKERRQ(ierr);
+    //  ierr = StressView_PV(c,(const PetscReal*)sigma_tilde2,prefix);CHKERRQ(ierr);
+    ierr = PetscSNPrintf(prefix,PETSC_MAX_PATH_LEN-1,"Sigma-Aligned-step-%.vtu",step);CHKERRQ(ierr);
+    ierr = StressView_PV(c,(const PetscReal*)sigma_tilde3,prefix);CHKERRQ(ierr);
+   }
 
   for (e=0; e<c->ne; e++) {
     ierr = PetscMemzero(fe,sizeof(PetscReal)*nbasis*ndof);CHKERRQ(ierr);
@@ -3602,6 +3614,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   }
   ierr = VecDestroy(&proj);CHKERRQ(ierr);
 
+  ierr = PetscFree(sigma_tilde3);CHKERRQ(ierr);
   ierr = PetscFree(sigma_tilde2);CHKERRQ(ierr);
   ierr = PetscFree(sigma_tilde);CHKERRQ(ierr);
   ierr = PetscFree(cell_flag);CHKERRQ(ierr);
@@ -5110,8 +5123,8 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
     }
     if (k%of == 0) {
       char prefix[PETSC_MAX_PATH_LEN];
-      ierr = PetscSNPrintf(prefix,PETSC_MAX_PATH_LEN-1,"step-%.4D-sigma.vtu",k);CHKERRQ(ierr);
-      ierr = StressView_PV(ctx,(const PetscReal*)ctx->sigma,prefix);CHKERRQ(ierr);
+      // ierr = PetscSNPrintf(prefix,PETSC_MAX_PATH_LEN-1,"step-%.4D-sigma.vtu",k);CHKERRQ(ierr);
+      // ierr = StressView_PV(ctx,(const PetscReal*)ctx->sigma,prefix);CHKERRQ(ierr);
       
       /*
       Vec proj = NULL, v[3];
