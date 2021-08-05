@@ -3534,7 +3534,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
 
   if (step%10 == 0) {
     char prefix[PETSC_MAX_PATH_LEN];
-    
+
     //   ierr = DGProject(c, c->basisorder, 3, sigma_tilde);CHKERRQ(ierr);
     //   ierr = DGProject(c, c->basisorder, 3, sigma_tilde2);CHKERRQ(ierr);
     ierr = DGProject(c, c->basisorder, 3, sigma_tilde3);CHKERRQ(ierr);
@@ -3544,7 +3544,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
     //  ierr = StressView_PV(c,(const PetscReal*)sigma_tilde,prefix);CHKERRQ(ierr);
     //  ierr = PetscSNPrintf(prefix,PETSC_MAX_PATH_LEN-1,"step-%.4D-sigma_tilde_BPost.vtu",step);CHKERRQ(ierr);
     //  ierr = StressView_PV(c,(const PetscReal*)sigma_tilde2,prefix);CHKERRQ(ierr);
-    ierr = PetscSNPrintf(prefix,PETSC_MAX_PATH_LEN-1,"Sigma-Aligned-step-%.vtu",step);CHKERRQ(ierr);
+    ierr = PetscSNPrintf(prefix,PETSC_MAX_PATH_LEN-1,"Sigma-Aligned-step-%.4D.vtu",step);CHKERRQ(ierr);
     ierr = StressView_PV(c,(const PetscReal*)sigma_tilde3,prefix);CHKERRQ(ierr);
    }
 
