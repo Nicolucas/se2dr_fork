@@ -5649,7 +5649,7 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
     
     /* Compute f = -F^{int}( u_{n+1} ) */
     
-    //ierr = AssembleLinearForm_ElastoDynamics_StressGlut2d(ctx,u,v,dt,time, gamma,f,k);CHKERRQ(ierr);
+    //ierr = AssembleLinearForm_ElastoDynamics_StressGlut2d(ctx,u,v,dt,time, gamma,f,k,of);CHKERRQ(ierr);
     ierr = AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(ctx,u,v,dt,time, gamma,f,k,of);CHKERRQ(ierr);
 
     /* Update force; F^{ext}_{n+1} = f + S(t_{n+1}) g(x) */
