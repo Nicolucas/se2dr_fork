@@ -2839,7 +2839,7 @@ PetscErrorCode SaveTheReceivers(PetscReal Time, PetscInt e, PetscInt q,
  * %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 */
 
-PetscErrorCode GlobalToLocalChangeOfBasis(PetscReal n[],PetscReal t[], PetscReal sigma_trial[]){
+PetscErrorCode Global2LocalChangeOfBasis(PetscReal n[],PetscReal t[], PetscReal sigma_trial[]){
   PetscReal Sig[3];
   PetscErrorCode ierr;
 
@@ -3350,7 +3350,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
 
       ierr = FaultSDFNormal(coor_qp,the_sdf, e*c->nqp + q, normal);CHKERRQ(ierr);
       ierr = FaultSDFTangent(coor_qp,the_sdf, e*c->nqp + q, tangent);CHKERRQ(ierr);
-      ierr = GlobalToLocalChangeOfBasis(normal, tangent, sigma_trial);CHKERRQ(ierr);
+      ierr = Global2LocalChangeOfBasis(normal, tangent, sigma_trial);CHKERRQ(ierr);
 
       
       /* add the initial stress state on fault */
@@ -3449,21 +3449,21 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
           }
           
           if (dr_celldata[q].sliding == PETSC_TRUE) {
-
-            /**Self-similar crack - Smoothing for p > 1 */
+            
+            // /**Self-similar crack - Smoothing */
             if(c->basisorder > 0) //OrderLimiter
             {
-              ierr = PetscTanHWeighting( &T,  T, tau, phi_p , 4.0*c->basisorder/c->delta ,  0.65*c->delta); CHKERRQ(ierr);
+              ierr = PetscTanHWeighting( &T, sigma_t, tau, phi_p , 2.5/c->delta ,  c->delta); CHKERRQ(ierr);
               sigma_trial[TENS2D_XY] = T;
             }
-            
+            //sigma_trial[TENS2D_XY] = tau;
             /**Antiparallel condition between slip rate and critical shear */
 
             // if ( slip_rate < 0.0) //slip_rate=v(+)-v(-) defined following Dalguer
             // {
             //   sigma_trial[TENS2D_XY] = -sigma_trial[TENS2D_XY];
             // } 
-
+            
             //printf("  sigma_xy %+1.8e\n",sigma_vec[TENS2D_XY]);
           } else {
             slip_rate = 0.0;
@@ -3962,7 +3962,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
 
       ierr = FaultSDFNormal(coor_qp,the_sdf, e*c->nqp + q, normal);CHKERRQ(ierr);
       ierr = FaultSDFTangent(coor_qp,the_sdf, e*c->nqp + q, tangent);CHKERRQ(ierr);
-      ierr = GlobalToLocalChangeOfBasis(normal, tangent, sigma_trial);CHKERRQ(ierr);
+      ierr = Global2LocalChangeOfBasis(normal, tangent, sigma_trial);CHKERRQ(ierr);
       
       /* add the initial stress state on fault */
       if (fabs(DistOnFault) < 1.5*1.0e3 && cell_flag[e]) {
@@ -4039,13 +4039,13 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
           
           if (dr_celldata[q].sliding == PETSC_TRUE) {
 
-            /**Self-similar crack - Smoothing for p > 1 */
+            // /**Self-similar crack - Smoothing for p > 1 */
             if(c->basisorder > 0) //OrderLimiter
             {
-              ierr = PetscTanHWeighting( &T,  T, tau, phi_p , 4.0*c->basisorder/c->delta , 0.65*c->delta); CHKERRQ(ierr);
+              ierr = PetscTanHWeighting( &T, sigma_t, tau, phi_p , 2.5/c->delta ,  c->delta); CHKERRQ(ierr);
               sigma_trial[TENS2D_XY] = T;
             }
-            
+            //sigma_trial[TENS2D_XY] = tau;            
             /**Antiparallel condition between slip rate and critical shear */
 
             // if ( slip_rate < 0.0) //slip_rate=v(+)-v(-) defined following Dalguer
@@ -4068,7 +4068,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
         _sigma_store[TENS2D_XX] = sigma_trial[TENS2D_XX];
         _sigma_store[TENS2D_YY] = sigma_trial[TENS2D_YY];
         _sigma_store[TENS2D_XY] = sigma_trial[TENS2D_XY];
-        //ierr = Local2GlobalChangeOfBasis(normal, tangent, _sigma_store);CHKERRQ(ierr);
+        ierr = Local2GlobalChangeOfBasis(normal, tangent, _sigma_store);CHKERRQ(ierr);
       }
 
 
