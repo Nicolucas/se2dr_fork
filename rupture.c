@@ -393,7 +393,7 @@ PetscErrorCode SDFSetup(SDF s,int dim,int type)
                 GeometryParams g;
                 ierr = GeoParamsCreate(&g);CHKERRQ(ierr);
                 printf("Sigmoid Fault \n");
-                g->HalfNumPoints = 3000; 
+                g->HalfNumPoints = 200000; 
                 g->k             = -0.0002;
                 g->amp           = 2.0;
                 g->xorigin       = -1.0e4;
@@ -479,7 +479,7 @@ PetscErrorCode FaultSDFQuery(PetscReal coor[],PetscReal delta,void *ctx, PetscIn
 {
   PetscReal phi = 1.0e32;
   PetscReal DistOnFault = 1.0e32;
-  PetscReal normal[2];
+  //PetscReal normal[2];
   PetscErrorCode ierr;
   
   *inside = PETSC_FALSE;
@@ -487,7 +487,8 @@ PetscErrorCode FaultSDFQuery(PetscReal coor[],PetscReal delta,void *ctx, PetscIn
   ierr = evaluate_DistOnFault_sdf(ctx, coor, qpIdx, &DistOnFault);CHKERRQ(ierr);
   //printf("DistOnFault, %+1.4e, Phi: %+1.4e \n", DistOnFault, phi);
 
-  if (PetscAbsReal(DistOnFault) >  10.0e3) { PetscFunctionReturn(0); }
+  //if (PetscAbsReal(DistOnFault) >  10.0e3) { PetscFunctionReturn(0); }
+  if (PetscAbsReal(DistOnFault) >  15.0e3) { PetscFunctionReturn(0); }
   
   if (PetscAbsReal(phi) > delta) { PetscFunctionReturn(0); }
   *inside = PETSC_TRUE;
