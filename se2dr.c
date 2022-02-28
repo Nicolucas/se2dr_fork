@@ -620,8 +620,38 @@ PetscErrorCode PetscTanHWeightingSeparated(PetscReal *Result, PetscReal phi, Pet
   Result[1] = 1.0 - weight;
   PetscFunctionReturn(0);
 }
-/*
- warp for dr mesh
+
+/**
+ * Gaussian for the nucleation
+*/
+PetscErrorCode PetscGaussianNucleation(PetscReal *Result, PetscReal DistR, PetscReal R)
+{
+  PetscReal weight;
+  if (DistR<R)
+  {
+    weight = PetscExpReal((DistR*DistR)/(DistR*DistR - R*R));
+  } else {
+    weight = 0.0;
+  }
+  Result[0] = weight;
+  Result[1] = 1.0 - weight;
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode PetscGaussianNucleationTime(PetscReal *Result, PetscReal time, PetscReal T)
+{
+  PetscReal weight;
+  if (time<T)
+  {
+    weight = PetscExpReal((time-T)*(time-T)/(time*(time-2.0*T)));
+  } else {
+    weight = 1.0;
+  }
+  Result[0] = weight;
+  PetscFunctionReturn(0);
+}
+
+/*warp for dr mesh
  
  get ymax
  
@@ -3027,9 +3057,6 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   PetscFunctionReturn(0);
 }
 
-
-
-
 PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Vec u,Vec v,PetscReal dt,PetscReal time,PetscReal gamma,Vec F, PetscInt step, PetscInt of)
 {
   PetscErrorCode ierr;
@@ -3043,6 +3070,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
   void *the_sdf;
 
   PetscReal *sigma_tilde3;
+  PetscBool *cell_flag;
+
   PetscBool StressSnapshot = PETSC_FALSE;
 
   // 0.55 is a good fit to matching sem2pack's displacement field...near the point (0,500)
@@ -3050,6 +3079,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
   PetscReal sigma_t_0 = 70.0  * 1.0e6 * 1.0;
   PetscReal sigma_n_1 = 120.0 * 1.0e6 * 1.0;
   PetscReal sigma_t_1 = 81.6  * 1.0e6 * 1.0;
+
+  PetscReal Half_L_nuc = 1.5*1.0e3 - 1.0;
 
 
   ierr = VecZeroEntries(F);CHKERRQ(ierr);
@@ -3087,6 +3118,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
   vx = &fieldV[0];
   vy = &fieldV[nbasis];
   
+  PetscCalloc1(c->ne,&cell_flag);
   SpecFECreateQuadratureField(c,3,&sigma_tilde3); // Stress after the background stress is removed
 
   
@@ -3095,7 +3127,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
   }
 
   /* compute and stress stress */
-  for (e=0; e<c->ne; e++) {    
+  for (e=0; e<c->ne; e++) {   
+    PetscBool Cell_inside_fault_region = PETSC_FALSE; 
     /* get element -> node map */
     elnidx = &element[nbasis*e];
     
@@ -3110,6 +3143,23 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
       PetscInt nidx = elnidx[i];
       elcoords[2*i  ] = LA_coor[2*nidx  ];
       elcoords[2*i+1] = LA_coor[2*nidx+1];
+    }
+
+    cell_flag[e] = PETSC_FALSE;
+    for (i=0; i<nbasis; i++) {
+      ierr = FaultSDFQuery(&elcoords[2*i], c->delta, the_sdf, e*nbasis + i, &Cell_inside_fault_region);CHKERRQ(ierr);
+
+      if (Cell_inside_fault_region) {
+        PetscReal DistOnFault;
+        DistOnFault = 0.0;
+
+        ierr = evaluate_DistOnFault_sdf(the_sdf, &elcoords[2*i], e*nbasis + i, &DistOnFault);CHKERRQ(ierr);
+
+        if (fabs(DistOnFault) < Half_L_nuc){
+          cell_flag[e] = PETSC_TRUE;
+          break;
+        }
+      }
     }
     
     /* get element displacements & velocities */
@@ -3331,9 +3381,11 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
       ierr = Global2LocalChangeOfBasis(normal, tangent, sigma_trial);CHKERRQ(ierr);
       
       /* add the initial stress state on fault */
-      if (fabs(DistOnFault) < 1.5*1.0e3 && inside_fault_region) {
-        sigma_trial[TENS2D_XY] += sigma_t_1;
-        sigma_trial[TENS2D_YY] += (-sigma_n_1); /* negative in compression */
+      if (cell_flag[e]) {
+        PetscReal GaussWeights[] = {0,0};
+        ierr = PetscGaussianNucleation(GaussWeights, DistOnFault, 1.5*1.0e3);
+        sigma_trial[TENS2D_XY] +=    GaussWeights[0]*sigma_t_1 + GaussWeights[1]*sigma_t_0;
+        sigma_trial[TENS2D_YY] += (- GaussWeights[0]*sigma_n_1 - GaussWeights[1]*sigma_n_0); /* negative in compression */
       } else {
         sigma_trial[TENS2D_XY] += sigma_t_0;
         sigma_trial[TENS2D_YY] += (-sigma_n_0); /* negative in compression */
@@ -3373,7 +3425,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
         
         { 
           PetscReal WeightedValues[] = {0,0};
-          PetscReal BlendParamA = 18/c->delta;
+          PetscReal BlendParamA = 12/c->delta;
           PetscReal BlendParamphio = 0.65*c->delta;
 
           T = fabs(sigma_t);
@@ -3421,9 +3473,11 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
 
 
       /* add the initial stress state on fault */
-      if (fabs(DistOnFault) < 1.5*1.0e3 && inside_fault_region) {
-        sigma_trial[TENS2D_XY] -= sigma_t_1;
-        sigma_trial[TENS2D_YY] -= (-sigma_n_1); /* negative in compression */
+      if (cell_flag[e]) {
+        PetscReal GaussWeights[] = {0,0};
+        ierr = PetscGaussianNucleation(GaussWeights, DistOnFault, 1.5*1.0e3);
+        sigma_trial[TENS2D_XY] -= GaussWeights[0]*sigma_t_1 + GaussWeights[1]*sigma_t_0;
+        sigma_trial[TENS2D_YY] -= (- GaussWeights[0]*sigma_n_1 - GaussWeights[1]*sigma_n_0); /* negative in compression */
       } else {
         sigma_trial[TENS2D_XY] -= sigma_t_0;
         sigma_trial[TENS2D_YY] -= (-sigma_n_0); /* negative in compression */
@@ -3454,7 +3508,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
   if (StressSnapshot)  {
     char prefix[PETSC_MAX_PATH_LEN];
 
-      ierr = DGProject(c, c->basisorder, 3, sigma_tilde3);CHKERRQ(ierr);
+    ierr = DGProject(c, c->basisorder, 3, sigma_tilde3);CHKERRQ(ierr);
 
     ierr = PetscSNPrintf(prefix,PETSC_MAX_PATH_LEN-1,"Sigma-Aligned-step-%.4D.vtu",step);CHKERRQ(ierr);
     ierr = StressView_PV(c,(const PetscReal*)sigma_tilde3,prefix);CHKERRQ(ierr);
@@ -3515,6 +3569,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
   ierr = VecRestoreArrayRead(coor,&LA_coor);CHKERRQ(ierr);
 
   ierr = PetscFree(sigma_tilde3);CHKERRQ(ierr);
+  ierr = PetscFree(cell_flag);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -3537,7 +3592,6 @@ PetscErrorCode Update_StressGlut2d(SpecFECtx c,Vec u,Vec v,PetscReal dt)
     ierr = DMGetBoundingBox(c->dm,gmin,gmax);CHKERRQ(ierr);
     beenhere = PETSC_TRUE;
   }
-  
   
   
   eldofs   = c->elbuf_dofs;
@@ -3746,7 +3800,6 @@ PetscErrorCode Update_StressGlut2d(SpecFECtx c,Vec u,Vec v,PetscReal dt)
 
   PetscFunctionReturn(0);
 }
-
 
 PetscErrorCode AssembleBilinearForm_Mass2d(SpecFECtx c,Vec A)
 {
