@@ -2572,25 +2572,6 @@ PetscErrorCode TensorInverseTransform(PetscReal e1[],PetscReal e2[],PetscReal T[
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode ChopCorners(PetscReal Phi, PetscReal DistOnFault, PetscReal NucleationHalfLength, PetscReal delta, PetscBool *OutCorner)
-{
-  PetscReal x0 = fabs(DistOnFault)-(NucleationHalfLength-1.0*delta);
-  PetscReal y0 = Phi;
-
-  *OutCorner = PETSC_FALSE;
-  if (fabs(DistOnFault) < (NucleationHalfLength-1.0*delta)){
-    *OutCorner = PETSC_TRUE;
-    PetscFunctionReturn(0);
-  }
-
-  if ((x0*x0 + y0*y0) < (delta*delta)){
-    *OutCorner = PETSC_TRUE;
-  }
-
-  PetscFunctionReturn(0);
-}
-
-
 PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,Vec v,PetscReal dt,PetscReal time,PetscReal gamma,Vec F, PetscInt step, PetscInt of)
 {
   PetscErrorCode ierr;
@@ -3418,30 +3399,18 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
       
       /* add the initial stress state on fault */
       if (fabs(DistOnFault) < Half_L_nuc && inside_fault_region) {
-        //PetscReal TransitionWeights[] = {1.0,0.0};
-        // PetscReal EleWidth = c->delta;
-
-        // PetscReal ScEle = 1.5;
-        // PetscReal A_nuc = 2.0/EleWidth;
+        PetscReal TransitionWeights[] = {0.0,0.0};
+        PetscReal EleWidth = c->delta;
+        PetscReal A_nuc = 2.5/EleWidth;
        
 
-        // ierr = PetscNucleationTransition(TransitionWeights,  DistOnFault, A_nuc, Half_L_nuc-ScEle*EleWidth, EleWidth);
+        ierr = PetscNucleationTransition(TransitionWeights,  DistOnFault, A_nuc, Half_L_nuc-EleWidth, EleWidth);
 
 
-        // sigma_trial[TENS2D_XY] +=    TransitionWeights[0]*sigma_t_1 + TransitionWeights[1]*sigma_t_0;
-        // sigma_trial[TENS2D_YY] += (- TransitionWeights[0]*sigma_n_1 - TransitionWeights[1]*sigma_n_0); /* negative in compression */
-        PetscBool OutCorner = PETSC_FALSE;
-        PetscReal phi_p;
-        ierr = evaluate_sdf(the_sdf,coor_qp, e*c->nqp + q, &phi_p);CHKERRQ(ierr);
-        ierr = ChopCorners(phi_p, DistOnFault, Half_L_nuc, c->delta, &OutCorner);
-        if (OutCorner){
-          sigma_trial[TENS2D_XY] +=  sigma_t_1;
-          sigma_trial[TENS2D_YY] += -sigma_n_1;
-        }else{
-          sigma_trial[TENS2D_XY] +=  sigma_t_0;
-          sigma_trial[TENS2D_YY] += -sigma_n_0;
-        }
-
+        sigma_trial[TENS2D_XY] +=    TransitionWeights[0]*sigma_t_1 + TransitionWeights[1]*sigma_t_0;
+        sigma_trial[TENS2D_YY] += (- TransitionWeights[0]*sigma_n_1 - TransitionWeights[1]*sigma_n_0);  /* negative in compression */
+        // sigma_trial[TENS2D_XY] +=   sigma_t_1;
+        // sigma_trial[TENS2D_YY] += (-sigma_n_1); /* negative in compression */
       } else {
         sigma_trial[TENS2D_XY] += sigma_t_0;
         sigma_trial[TENS2D_YY] += (-sigma_n_0); /* negative in compression */
@@ -3529,29 +3498,19 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
 
       /* add the initial stress state on fault */
       if (fabs(DistOnFault) < Half_L_nuc && inside_fault_region) {
-        PetscReal TransitionWeights[] = {1.0,0.0};
-        // PetscReal EleWidth = c->delta;
-        // PetscReal A_nuc = 2.5/EleWidth;
+        PetscReal TransitionWeights[] = {0.0,0.0};
+        PetscReal EleWidth = c->delta;
+        PetscReal A_nuc = 2.5/EleWidth;
        
 
-        // ierr = PetscNucleationTransition(TransitionWeights,  DistOnFault, A_nuc, Half_L_nuc-EleWidth, EleWidth);
+        ierr = PetscNucleationTransition(TransitionWeights,  DistOnFault, A_nuc, Half_L_nuc-EleWidth, EleWidth);
 
 
-        // sigma_trial[TENS2D_XY] -=    TransitionWeights[0]*sigma_t_1 + TransitionWeights[1]*sigma_t_0;
-        // sigma_trial[TENS2D_YY] -= (- TransitionWeights[0]*sigma_n_1 - TransitionWeights[1]*sigma_n_0); /* negative in compression */
+        sigma_trial[TENS2D_XY] -=   TransitionWeights[0]*sigma_t_1 + TransitionWeights[1]*sigma_t_0;
+        sigma_trial[TENS2D_YY] -= (- TransitionWeights[0]*sigma_n_1 - TransitionWeights[1]*sigma_n_0); /* negative in compression */
 
-        PetscBool InCorner = PETSC_FALSE;
-        PetscReal phi_p;
-        ierr = evaluate_sdf(the_sdf,coor_qp, e*c->nqp + q, &phi_p);CHKERRQ(ierr);
-        ierr = ChopCorners(phi_p, DistOnFault, Half_L_nuc, c->delta, &InCorner);
-        if (InCorner){
-          sigma_trial[TENS2D_XY] -=  sigma_t_1;
-          sigma_trial[TENS2D_YY] -= -sigma_n_1;
-        }else{
-          sigma_trial[TENS2D_XY] -=  sigma_t_0;
-          sigma_trial[TENS2D_YY] -= -sigma_n_0;
-        }
-
+        // sigma_trial[TENS2D_XY] -= sigma_t_1;
+        // sigma_trial[TENS2D_YY] -= (-sigma_n_1); /* negative in compression */
       } else {
         sigma_trial[TENS2D_XY] -= sigma_t_0;
         sigma_trial[TENS2D_YY] -= (-sigma_n_0); /* negative in compression */
