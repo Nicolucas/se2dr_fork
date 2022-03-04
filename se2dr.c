@@ -651,6 +651,19 @@ PetscErrorCode PetscGaussianNucleationTime(PetscReal *Result, PetscReal time, Pe
   PetscFunctionReturn(0);
 }
 
+/**
+ * 
+*/ 
+PetscErrorCode PetscNucleationTransition(PetscReal *Result,  PetscReal DistOnFault, PetscReal Amplitude, PetscReal Lnuc, PetscReal EleWidth)
+{
+  PetscReal weight;
+  weight = 0.5 - 0.5 * PetscTanhReal((PetscAbsReal(DistOnFault)-Lnuc) * Amplitude);
+  Result[0] = weight;
+  Result[1] = 1.0 - weight;
+  PetscFunctionReturn(0);
+}
+
+
 /*warp for dr mesh
  
  get ymax
@@ -2559,6 +2572,25 @@ PetscErrorCode TensorInverseTransform(PetscReal e1[],PetscReal e2[],PetscReal T[
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode ChopCorners(PetscReal Phi, PetscReal DistOnFault, PetscReal NucleationHalfLength, PetscReal delta, PetscBool *OutCorner)
+{
+  PetscReal x0 = fabs(DistOnFault)-(NucleationHalfLength-1.0*delta);
+  PetscReal y0 = Phi;
+
+  *OutCorner = PETSC_FALSE;
+  if (fabs(DistOnFault) < (NucleationHalfLength-1.0*delta)){
+    *OutCorner = PETSC_TRUE;
+    PetscFunctionReturn(0);
+  }
+
+  if ((x0*x0 + y0*y0) < (delta*delta)){
+    *OutCorner = PETSC_TRUE;
+  }
+
+  PetscFunctionReturn(0);
+}
+
+
 PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,Vec v,PetscReal dt,PetscReal time,PetscReal gamma,Vec F, PetscInt step, PetscInt of)
 {
   PetscErrorCode ierr;
@@ -2572,7 +2604,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   void *the_sdf;
 
   PetscReal *sigma_tilde3;
-  PetscBool StressSnapshot = PETSC_FALSE;
+  PetscBool StressSnapshot = PETSC_FALSE; 
 
   PetscReal sigma_n_0 = 40.0 * 1.0e6;
   PetscReal sigma_t_0 = 20.0 * 1.0e6;
@@ -2582,7 +2614,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   
   ierr = VecZeroEntries(F);CHKERRQ(ierr);
  
-  //StressSnapshot = (4.05 > step*dt)&&(step*dt > 3.80)&&(step%of==0);
+  StressSnapshot = (4.05 > step*dt)&&(step*dt > 3.90)&&(step%of==0);
   
   eldofs   = c->elbuf_dofs;
   elcoords = c->elbuf_coor;
@@ -3080,10 +3112,14 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
   PetscReal sigma_n_1 = 120.0 * 1.0e6 * 1.0;
   PetscReal sigma_t_1 = 81.6  * 1.0e6 * 1.0;
 
-  PetscReal Half_L_nuc = 1.5*1.0e3 - 1.0;
+  PetscReal Half_L_nuc = 1.5*1.0e3 + 1.0;
 
 
   ierr = VecZeroEntries(F);CHKERRQ(ierr);
+
+  //StressSnapshot = (3.05 > step*dt)&&(step*dt > 2.90)&&(step%of==0);
+  StressSnapshot = (step < 210)&&(step > 190)&&(step%of==0);
+  StressSnapshot = (step%of==0);
   
   eldofs   = c->elbuf_dofs;
   elcoords = c->elbuf_coor;
@@ -3381,11 +3417,31 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
       ierr = Global2LocalChangeOfBasis(normal, tangent, sigma_trial);CHKERRQ(ierr);
       
       /* add the initial stress state on fault */
-      if (cell_flag[e]) {
-        PetscReal GaussWeights[] = {0,0};
-        ierr = PetscGaussianNucleation(GaussWeights, DistOnFault, 1.5*1.0e3);
-        sigma_trial[TENS2D_XY] +=    GaussWeights[0]*sigma_t_1 + GaussWeights[1]*sigma_t_0;
-        sigma_trial[TENS2D_YY] += (- GaussWeights[0]*sigma_n_1 - GaussWeights[1]*sigma_n_0); /* negative in compression */
+      if (fabs(DistOnFault) < Half_L_nuc && inside_fault_region) {
+        //PetscReal TransitionWeights[] = {1.0,0.0};
+        // PetscReal EleWidth = c->delta;
+
+        // PetscReal ScEle = 1.5;
+        // PetscReal A_nuc = 2.0/EleWidth;
+       
+
+        // ierr = PetscNucleationTransition(TransitionWeights,  DistOnFault, A_nuc, Half_L_nuc-ScEle*EleWidth, EleWidth);
+
+
+        // sigma_trial[TENS2D_XY] +=    TransitionWeights[0]*sigma_t_1 + TransitionWeights[1]*sigma_t_0;
+        // sigma_trial[TENS2D_YY] += (- TransitionWeights[0]*sigma_n_1 - TransitionWeights[1]*sigma_n_0); /* negative in compression */
+        PetscBool OutCorner = PETSC_FALSE;
+        PetscReal phi_p;
+        ierr = evaluate_sdf(the_sdf,coor_qp, e*c->nqp + q, &phi_p);CHKERRQ(ierr);
+        ierr = ChopCorners(phi_p, DistOnFault, Half_L_nuc, c->delta, &OutCorner);
+        if (OutCorner){
+          sigma_trial[TENS2D_XY] +=  sigma_t_1;
+          sigma_trial[TENS2D_YY] += -sigma_n_1;
+        }else{
+          sigma_trial[TENS2D_XY] +=  sigma_t_0;
+          sigma_trial[TENS2D_YY] += -sigma_n_0;
+        }
+
       } else {
         sigma_trial[TENS2D_XY] += sigma_t_0;
         sigma_trial[TENS2D_YY] += (-sigma_n_0); /* negative in compression */
@@ -3415,7 +3471,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
 
 
         
-        slip = dr_celldata[q].slip + slip_rate*dt;
+        slip = dr_celldata[q].slip;
 
         /* ================================================================ */
         
@@ -3447,7 +3503,6 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
 
           ierr = PetscTanHWeightingSeparated(WeightedValues, phi_p, BlendParamA, BlendParamphio); CHKERRQ(ierr);
           //Sliding flag changed forever when yielding is reached for the first time       
-
           if(T > tau){
             dr_celldata[q].sliding = PETSC_TRUE;
           }
@@ -3455,7 +3510,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
           if (dr_celldata[q].sliding == PETSC_TRUE) {
             /**TPV3 - Smoothing */
             sigma_trial[TENS2D_XY] = WeightedValues[0]*tau + WeightedValues[1]*T ;
-            //sigma_trial[TENS2D_XY] = tau ;
+            //sigma_trial[TENS2D_XY] = tau ;      
 
             /**Antiparallel condition between slip rate and critical shear */
             if ( sigma_t < 0.0) //slip_rate=v(+)-v(-) defined following Dalguer, sigma_t following  Ampuero's notes
@@ -3473,16 +3528,35 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
 
 
       /* add the initial stress state on fault */
-      if (cell_flag[e]) {
-        PetscReal GaussWeights[] = {0,0};
-        ierr = PetscGaussianNucleation(GaussWeights, DistOnFault, 1.5*1.0e3);
-        sigma_trial[TENS2D_XY] -= GaussWeights[0]*sigma_t_1 + GaussWeights[1]*sigma_t_0;
-        sigma_trial[TENS2D_YY] -= (- GaussWeights[0]*sigma_n_1 - GaussWeights[1]*sigma_n_0); /* negative in compression */
+      if (fabs(DistOnFault) < Half_L_nuc && inside_fault_region) {
+        PetscReal TransitionWeights[] = {1.0,0.0};
+        // PetscReal EleWidth = c->delta;
+        // PetscReal A_nuc = 2.5/EleWidth;
+       
+
+        // ierr = PetscNucleationTransition(TransitionWeights,  DistOnFault, A_nuc, Half_L_nuc-EleWidth, EleWidth);
+
+
+        // sigma_trial[TENS2D_XY] -=    TransitionWeights[0]*sigma_t_1 + TransitionWeights[1]*sigma_t_0;
+        // sigma_trial[TENS2D_YY] -= (- TransitionWeights[0]*sigma_n_1 - TransitionWeights[1]*sigma_n_0); /* negative in compression */
+
+        PetscBool InCorner = PETSC_FALSE;
+        PetscReal phi_p;
+        ierr = evaluate_sdf(the_sdf,coor_qp, e*c->nqp + q, &phi_p);CHKERRQ(ierr);
+        ierr = ChopCorners(phi_p, DistOnFault, Half_L_nuc, c->delta, &InCorner);
+        if (InCorner){
+          sigma_trial[TENS2D_XY] -=  sigma_t_1;
+          sigma_trial[TENS2D_YY] -= -sigma_n_1;
+        }else{
+          sigma_trial[TENS2D_XY] -=  sigma_t_0;
+          sigma_trial[TENS2D_YY] -= -sigma_n_0;
+        }
+
       } else {
         sigma_trial[TENS2D_XY] -= sigma_t_0;
         sigma_trial[TENS2D_YY] -= (-sigma_n_0); /* negative in compression */
       } 
-
+ 
       {
         PetscReal *_sigma_store = &sigma_tilde3[e*(c->npe * 3) + q*3];
         _sigma_store[TENS2D_XX] = sigma_trial[TENS2D_XX];
@@ -3744,8 +3818,8 @@ PetscErrorCode Update_StressGlut2d(SpecFECtx c,Vec u,Vec v,PetscReal dt)
 
         Vplus  = plus[0];
         Vminus = minus[0];
-        // slip_rate = Vplus - Vminus;
-				slip_rate = ( plus[0] - minus[0] ) * tangent[0] + ( plus[1] - minus[1] ) * tangent[1] ;	
+        slip_rate = Vplus - Vminus;
+				//slip_rate = ( plus[0] - minus[0] ) * tangent[0] + ( plus[1] - minus[1] ) * tangent[1] ;	
 
         
         
@@ -3769,8 +3843,8 @@ PetscErrorCode Update_StressGlut2d(SpecFECtx c,Vec u,Vec v,PetscReal dt)
         
         Uplus  = plus[0];
         Uminus = minus[0];
-        //slip = Uplus - Uminus;
-        slip = ( plus[0] - minus[0] ) * tangent[0] + ( plus[1] - minus[1] ) * tangent[1] ;	
+        slip = Uplus - Uminus;
+        //slip = ( plus[0] - minus[0] ) * tangent[0] + ( plus[1] - minus[1] ) * tangent[1] ;	
         /* ================================================================ */
         
         
@@ -4865,9 +4939,9 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
    Define your domain by shifting and scaling the default [0,1]^2 domain
   */
   {
-    PetscReal alpha = 20.0e3;
-    PetscReal scale[] = {  3.0*alpha, 3.0*alpha };
-    PetscReal shift[] = { -1.5*alpha,-1.5*alpha };
+    PetscReal alpha = 10.0e3;
+    PetscReal scale[] = {  2.0*alpha, 2.0*alpha };
+    PetscReal shift[] = { -1.0*alpha,-1.0*alpha };
     
     ierr = SpecFECtxScaleMeshCoords(ctx,scale,shift);CHKERRQ(ierr);
   }
@@ -4975,12 +5049,14 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
   /** */
   PetscPrintf(PETSC_COMM_WORLD,"[Nico] estimated dt: %1.4e\n",dt);
   /** Artificial viscosity - KV time stepping */
-  gamma  = 0.6*dt;
-  GetStableTimeStep(dt, gamma, &dt);
-  PetscPrintf(PETSC_COMM_WORLD,"[Nico] New estimated dt: %1.4e\n",dt);
+  //gamma  = 0.6*dt;
+  //GetStableTimeStep(dt, gamma, &dt);
+  //PetscPrintf(PETSC_COMM_WORLD,"[Nico] New estimated dt: %1.4e\n",dt);
   /** */
 
   dt = dt * 0.5;
+  gamma  = 0.3*dt;
+
   ierr = PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);CHKERRQ(ierr);
   PetscPrintf(PETSC_COMM_WORLD,"[se2dr] Using time step size: %1.4e\n",dt);
   
