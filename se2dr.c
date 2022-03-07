@@ -3723,10 +3723,13 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
         {
           PetscInt NumPointsDiv = 7;
           PetscReal phi_qp;
+          PetscReal sigma_avg[] = {0.0, 0.0, 0.0};
           ierr = evaluate_sdf(the_sdf,coor_qp, e*c->nqp + q, &phi_qp);CHKERRQ(ierr);
 				  ierr = AvgStress4YieldCondition(c,coor_qp,LA_coor,LA_u,LA_v,gamma,NumPointsDiv,normal,phi_qp,sigma_avg);CHKERRQ(ierr);
           ierr = Global2LocalChangeOfBasis(normal, tangent, sigma_avg);CHKERRQ(ierr);
-          PetscReal sigma_avg[] = {0.0, 0.0, 0.0};
+          sigma_trial[TENS2D_YY] = sigma_avg[TENS2D_YY];
+          sigma_trial[TENS2D_XY] = sigma_avg[TENS2D_XY];
+          sigma_trial[TENS2D_XX] = sigma_avg[TENS2D_XX];
         }
 				
 
