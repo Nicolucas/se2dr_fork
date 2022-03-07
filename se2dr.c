@@ -627,9 +627,9 @@ PetscErrorCode PetscTanHWeightingSeparated(PetscReal *Result, PetscReal phi, Pet
 PetscErrorCode PetscGaussianNucleation(PetscReal *Result, PetscReal DistR, PetscReal R)
 {
   PetscReal weight;
-  if (DistR<R)
+  if (fabs(DistR)<R)
   {
-    weight = PetscExpReal((DistR*DistR)/(DistR*DistR - R*R));
+    weight = PetscExpReal((DistR*DistR)/(1.0*(DistR*DistR - R*R)));
   } else {
     weight = 0.0;
   }
@@ -3671,15 +3671,6 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
         gradu[3] += dNidy[i] * uy[i];
       }
       
-      /*
-       // test 3
-      {
-        PetscReal *ge;
-        int b;
-        ierr = SpecFEGetElementQuadratureField(c,4,e,(const PetscReal*)c->gradu,&ge);CHKERRQ(ierr);
-        for (b=0; b<4; b++) { ge[4*q + b] = gradu[b]; }
-      }
-      */
        
       coor_qp[0] = elcoords[2*q  ];
       coor_qp[1] = elcoords[2*q+1];
@@ -3710,30 +3701,20 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
       
       /* add the initial stress state on fault */
       if (fabs(DistOnFault) < Half_L_nuc && inside_fault_region) {
-        PetscReal TransitionWeights[] = {0.0,0.0};
+        PetscReal TransitionWeights[] = {1.0,0.0};
         PetscReal EleWidth = c->delta;
-        PetscReal A_nuc = 2.5/EleWidth;
+        PetscReal G_t = 0.0;
 
-        ierr = PetscNucleationTransition(TransitionWeights,  DistOnFault, A_nuc, Half_L_nuc-EleWidth, EleWidth);
+        // PetscReal A_nuc = 2.5/EleWidth;
 
-        /**
-         * @brief calculate the averaged differencial stress along the nucleation zone (non-local nucleation patch)
-         * 
-         */
-        {
-          PetscInt NumPointsDiv = 7;
-          PetscReal phi_qp;
-          PetscReal sigma_avg[] = {0.0, 0.0, 0.0};
-          ierr = evaluate_sdf(the_sdf,coor_qp, e*c->nqp + q, &phi_qp);CHKERRQ(ierr);
-				  ierr = AvgStress4YieldCondition(c,coor_qp,LA_coor,LA_u,LA_v,gamma,NumPointsDiv,normal,phi_qp,sigma_avg);CHKERRQ(ierr);
-          ierr = Global2LocalChangeOfBasis(normal, tangent, sigma_avg);CHKERRQ(ierr);
-          sigma_trial[TENS2D_YY] = sigma_avg[TENS2D_YY];
-          sigma_trial[TENS2D_XY] = sigma_avg[TENS2D_XY];
-          sigma_trial[TENS2D_XX] = sigma_avg[TENS2D_XX];
-        }
-				
+        // ierr = PetscNucleationTransition(TransitionWeights,  DistOnFault, A_nuc, Half_L_nuc-EleWidth, EleWidth);
+        ierr = PetscGaussianNucleation(TransitionWeights, DistOnFault, Half_L_nuc);
+        ierr = PetscGaussianNucleationTime( &G_t, time, 0.4);
+        TransitionWeights[0]=G_t*TransitionWeights[0];
+        TransitionWeights[1]=1.0-TransitionWeights[0];
 
-        sigma_trial[TENS2D_XY] +=    TransitionWeights[0]*sigma_t_1 + TransitionWeights[1]*sigma_t_0;
+
+        sigma_trial[TENS2D_XY] +=    (TransitionWeights[0]*sigma_t_1 + TransitionWeights[1]*sigma_t_0);
         sigma_trial[TENS2D_YY] += (- TransitionWeights[0]*sigma_n_1 - TransitionWeights[1]*sigma_n_0);  /* negative in compression */
         // sigma_trial[TENS2D_XY] +=   sigma_t_1;
         // sigma_trial[TENS2D_YY] += (-sigma_n_1); /* negative in compression */
@@ -3795,11 +3776,6 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
             exit(1);
           }
 
-          if(cell_flag[e]){
-            dr_celldata[q].sliding = PETSC_TRUE;
-          }
-
-
           ierr = PetscTanHWeightingSeparated(WeightedValues, phi_p, BlendParamA, BlendParamphio); CHKERRQ(ierr);
           //Sliding flag changed forever when yielding is reached for the first time       
           if(T > tau){
@@ -3828,18 +3804,22 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
 
       /* add the initial stress state on fault */
       if (fabs(DistOnFault) < Half_L_nuc && inside_fault_region) {
-        PetscReal TransitionWeights[] = {0.0,0.0};
+        PetscReal TransitionWeights[] = {1.0,0.0};
         PetscReal EleWidth = c->delta;
-        PetscReal A_nuc = 2.5/EleWidth;
-       
+        PetscReal G_t = 0.0;
 
-        ierr = PetscNucleationTransition(TransitionWeights,  DistOnFault, A_nuc, Half_L_nuc-EleWidth, EleWidth);
+        // PetscReal A_nuc = 2.5/EleWidth;
 
+        // ierr = PetscNucleationTransition(TransitionWeights,  DistOnFault, A_nuc, Half_L_nuc-EleWidth, EleWidth);
+        ierr = PetscGaussianNucleation(TransitionWeights, DistOnFault, Half_L_nuc);
+        ierr = PetscGaussianNucleationTime( &G_t, time, 0.4);
+        TransitionWeights[0]=G_t*TransitionWeights[0];
+        TransitionWeights[1]=1.0-TransitionWeights[0];
 
-        sigma_trial[TENS2D_XY] -=   TransitionWeights[0]*sigma_t_1 + TransitionWeights[1]*sigma_t_0;
-        sigma_trial[TENS2D_YY] -= (- TransitionWeights[0]*sigma_n_1 - TransitionWeights[1]*sigma_n_0); /* negative in compression */
-
-        // sigma_trial[TENS2D_XY] -= sigma_t_1;
+        
+        sigma_trial[TENS2D_XY] -=    TransitionWeights[0]*sigma_t_1 + TransitionWeights[1]*sigma_t_0;
+        sigma_trial[TENS2D_YY] -= (- TransitionWeights[0]*sigma_n_1 - TransitionWeights[1]*sigma_n_0);  /* negative in compression */
+        // sigma_trial[TENS2D_XY] -=   sigma_t_1;
         // sigma_trial[TENS2D_YY] -= (-sigma_n_1); /* negative in compression */
       } else {
         sigma_trial[TENS2D_XY] -= sigma_t_0;
