@@ -228,7 +228,6 @@ PetscErrorCode initializeZeroSetCurveFault(SDF s)
 /** 02.1 Precalculate the distance on the fault, Phi and gradPhi */
 PetscErrorCode Init_evaluate_Sigmoid_sdf(void *ctx, PetscReal coor[], PetscInt qpIdx, PetscReal *phi)
 {
-  PetscErrorCode ierr;
   double MagnitudePhi;
 
   SDF s = (SDF) ctx;
@@ -252,7 +251,6 @@ PetscErrorCode Init_evaluate_Sigmoid_sdf(void *ctx, PetscReal coor[], PetscInt q
 
 PetscErrorCode Init_evaluate_DistOnFault_Sigmoid_sdf(void *ctx, PetscReal coor[], PetscInt qpIdx, double *DistOnFault)
 {
-  PetscErrorCode ierr;
   SDF s = (SDF) ctx;
   
   GeometryParams g = (GeometryParams) s->data;
