@@ -26,6 +26,8 @@ typedef enum { TENS2D_XX=0, TENS2D_YY=1, TENS2D_XY=2 } VoigtTensor2d;
 
 typedef enum { KOSTROV=0, TPV3=1} ModelType;
 
+typedef enum { CORR_OFF=0, CORR_ON=1} TauCorrSwitch;
+
 typedef struct _p_SpecFECtx *SpecFECtx;
 
 typedef struct {
@@ -2587,7 +2589,7 @@ PetscErrorCode ChopCorners(PetscReal Phi, PetscReal DistOnFault, PetscReal Nucle
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,Vec v,PetscReal dt,PetscReal time,PetscReal gamma,Vec F, PetscInt step, PetscInt of, PetscReal blend_a_factor, PetscReal blend_phio_factor)
+PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,Vec v,PetscReal dt,PetscReal time,PetscReal gamma,Vec F, PetscInt step, PetscInt of, PetscReal blend_a_factor, PetscReal blend_phio_factor, TauCorrSwitch TauCorr)
 {
   PetscErrorCode ierr;
   PetscInt  e,nqp,q,i,nbasis,ndof;
@@ -2610,7 +2612,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
   
   ierr = VecZeroEntries(F);CHKERRQ(ierr);
  
-  StressSnapshot = (4.05 > step*dt)&&(step*dt > 3.90)&&(step%of==0);
+  StressSnapshot = (4.05 > step*dt)&&(step*dt > 3.95)&&(step%of==0);
   
   eldofs   = c->elbuf_dofs;
   elcoords = c->elbuf_coor;
@@ -2896,6 +2898,10 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
         PetscReal Vplus,Vminus,slip,slip_rate;
         PetscReal sigma_n,sigma_t,phi_p;
         PetscReal tau,mu_s,mu_d,mu_friction,T;
+        PetscReal DtUn = gradu[0]*normal[0]*tangent[0] + gradu[1]*normal[0]*tangent[1] + 
+                         gradu[2]*normal[1]*tangent[0] + gradu[3]*normal[1]*tangent[1];
+
+        PetscReal G_DtUn = DtUn*celldata->mu;
         //printf(">>[e %d , q %d] x_qp %+1.4e , %+1.4e\n",e,q,coor_qp[0],coor_qp[1]);
         ierr = evaluate_sdf(the_sdf,coor_qp, e*c->nqp + q, &phi_p);CHKERRQ(ierr);
         
@@ -2928,8 +2934,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
         slip = dr_celldata[q].slip;
 
 
-        sigma_n = PetscMin(sigma_trial[TENS2D_YY],0.0); /* only consider inelastic corrections if in compression. Otw, free slip condition. */
-        sigma_t = sigma_trial[TENS2D_XY];
+        sigma_n = PetscMin(sigma_trial[TENS2D_YY],-1.0e-12); /* only consider inelastic corrections if in compression. Otw, free slip condition. */
+	      sigma_t = sigma_trial[TENS2D_XY];
 
         dr_celldata[q].mu = 0;
 
@@ -2941,8 +2947,18 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
           PetscReal L = 250.0;
           PetscReal V = 2000.0;
           PetscReal mu_f;
+          PetscReal T_corr;
           
           T = fabs(sigma_t);
+          T_corr = T;
+
+          switch (TauCorr){
+            case CORR_ON:
+              T_corr = fabs(sigma_t-G_DtUn);
+              break;
+            case CORR_OFF:
+              break;
+          }
           
           /* Hard coded friction */
           mu_s = 0.5;
@@ -2964,12 +2980,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
           //Sliding flag changed forever when yielding is reached for the first time  
           ierr = PetscTanHWeightingSeparated(WeightedValues, phi_p, BlendParamA , BlendParamphio); CHKERRQ(ierr);
           //Sliding flag changed forever when yielding is reached for the first time          
-
-          if(T > tau){
-            dr_celldata[q].sliding = PETSC_TRUE;
-          }
           
-          if (dr_celldata[q].sliding == PETSC_TRUE) {
+          if (T_corr > tau) {
             /**Self-similar crack - Smoothing */
             sigma_trial[TENS2D_XY] = WeightedValues[1]*T + WeightedValues[0]*tau;
             //sigma_trial[TENS2D_XY] = tau;
@@ -2979,6 +2991,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
               sigma_trial[TENS2D_XY] = -sigma_trial[TENS2D_XY];
             } 
             //printf("  sigma_xy %+1.8e\n",sigma_vec[TENS2D_XY]);
+            sigma_trial[TENS2D_YY] = sigma_n;
+            dr_celldata[q].sliding = PETSC_TRUE;
           } else {
             slip_rate = 0.0;
           }
@@ -3087,7 +3101,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
 
 
 PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Vec u,Vec v,PetscReal dt,PetscReal time,PetscReal gamma,Vec F, PetscInt step, PetscInt of, 
-                                                                  PetscReal blend_a_factor, PetscReal blend_phio_factor)
+                                                                  PetscReal blend_a_factor, PetscReal blend_phio_factor, TauCorrSwitch TauCorr)
 {
   PetscErrorCode ierr;
   PetscInt  e,nqp,q,i,nbasis,ndof;
@@ -3113,9 +3127,8 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
 
   ierr = VecZeroEntries(F);CHKERRQ(ierr);
 
-  //StressSnapshot = (3.05 > step*dt)&&(step*dt > 2.90)&&(step%of==0);
-  //StressSnapshot = (step < 210)&&(step > 190)&&(step%of==0);
-  StressSnapshot = (step%of==0);
+  StressSnapshot = (3.05 > step*dt)&&(step*dt > 2.95)&&(step%of==0);
+  //StressSnapshot = (step%of==0);
   
   eldofs   = c->elbuf_dofs;
   elcoords = c->elbuf_coor;
@@ -3405,7 +3418,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
         PetscReal Vplus,Vminus,slip,slip_rate;
         PetscReal sigma_n,sigma_t,phi_p;
         PetscReal tau, mu_s, mu_d, mu_friction, T, D_c;
-        //PetscReal T_Asym, sigma_t_Asym;
+        PetscReal T_corr;
         PetscReal DtUn = gradu[0]*normal[0]*tangent[0] + gradu[1]*normal[0]*tangent[1] + 
                          gradu[2]*normal[1]*tangent[0] + gradu[3]*normal[1]*tangent[1];
 
@@ -3433,9 +3446,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
         /* ================================================================ */
         
         sigma_n = PetscMin(sigma_trial[TENS2D_YY],-1.0e-12); /* only consider inelastic corrections if in compression. Otw free slip condition */
-        sigma_t = sigma_trial[TENS2D_XY];
-        //sigma_t_Asym = sigma_t-G_DtUn;
-        
+	      sigma_t = sigma_trial[TENS2D_XY];        
         
         { 
           PetscReal WeightedValues[] = {0.0,0.0};
@@ -3443,8 +3454,16 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
           PetscReal BlendParamphio = blend_phio_factor*c->delta;
 
           T = fabs(sigma_t);
-          //T_Asym = fabs(sigma_t-G_DtUn);
-          
+          T_corr = T;
+
+          switch (TauCorr){
+            case CORR_ON:
+              T_corr = fabs(sigma_t-G_DtUn);
+              break;
+            case CORR_OFF:
+              break;
+          }
+
           /* Hard code linear slip weakening */
           mu_s = c->mu_s;
           mu_d = c->mu_d;
@@ -3463,7 +3482,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
 
           ierr = PetscTanHWeightingSeparated(WeightedValues, phi_p, BlendParamA, BlendParamphio); CHKERRQ(ierr);
           
-          if (T > tau) {
+          if (T_corr > tau) {
             /**TPV3 - Smoothing */         
             sigma_trial[TENS2D_XY] = WeightedValues[0]*tau + WeightedValues[1]*T ;
             //sigma_trial[TENS2D_XY] = tau ;  // No blending
@@ -3473,6 +3492,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
             {
               sigma_trial[TENS2D_XY] = -sigma_trial[TENS2D_XY];
             } 
+            sigma_trial[TENS2D_YY] = sigma_n;
 
             dr_celldata[q].sliding = PETSC_TRUE;
             //printf("  sigma_xy %+1.8e\n",sigma_vec[TENS2D_XY]);
@@ -4856,6 +4876,7 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
   PetscInt geometry_type;
   PetscReal blend_a_factor, blend_phio_factor;
   ModelType ModType;
+  TauCorrSwitch TauCorr;
   
   
   ierr = PetscOptionsGetBool(NULL,NULL,"-dump_ic_src",&dump_ic_src_vts,NULL);CHKERRQ(ierr);
@@ -4877,6 +4898,17 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
     PetscReal alpha = 10.0e3;
     PetscReal scale[] = {  2.0*alpha, 2.0*alpha };
     PetscReal shift[] = { -1.0*alpha,-1.0*alpha };
+    {
+      int Domain_large = 0;
+      ierr = PetscOptionsGetInt(NULL,NULL,"-Large_Domain",&Domain_large,NULL);CHKERRQ(ierr);
+      if (Domain_large==1) {
+        PetscPrintf(PETSC_COMM_WORLD,"Large domain simulation\n");
+        alpha = 20.0e3;
+        scale[0] =   3.0*alpha; scale[1] =   3.0*alpha;
+        shift[0] =  -1.5*alpha; shift[1] =  -1.5*alpha;
+      }
+    }
+    
     
     ierr = SpecFECtxScaleMeshCoords(ctx,scale,shift);CHKERRQ(ierr);
   }
@@ -4913,6 +4945,22 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
   /*
     Specify parameters regarding type of simulation
   */
+ { // Correction that assumes negligible the term Gdx_tdu_n in tau for the yielding evaluation
+  int TauCorrIn = 0;
+  ierr = PetscOptionsGetInt(NULL,NULL,"-tau_correction",&TauCorrIn,NULL);CHKERRQ(ierr);
+  
+  TauCorr = TauCorrIn;
+  switch (TauCorr){
+      case CORR_ON:
+        PetscPrintf(PETSC_COMM_WORLD,"   [Model Params] || Corrected yielding enabled\n");
+        break;
+      case CORR_OFF:
+        break;
+  }
+ }
+  
+
+
  {
     int Mod_Type = 0;// Set the type of Model to run: 0-> Kostrov, 1-> TPV3, else undefined
     ierr = PetscOptionsGetInt(NULL,NULL,"-model_type",&Mod_Type,NULL);CHKERRQ(ierr);
@@ -5020,13 +5068,15 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
   
   ierr = ElastoDynamicsComputeTimeStep_2d(ctx,&dt);CHKERRQ(ierr);
   
+  
   /** */
-  PetscPrintf(PETSC_COMM_WORLD,"[Nico] estimated dt: %1.4e\n",dt);
-  /** Artificial viscosity - KV time stepping */
-  //gamma  = 0.6*dt;
-  //GetStableTimeStep(dt, gamma, &dt);
-  //PetscPrintf(PETSC_COMM_WORLD,"[Nico] New estimated dt: %1.4e\n",dt);
+  // PetscPrintf(PETSC_COMM_WORLD,"[Nico] estimated dt: %1.4e\n",dt);
+  // /** Artificial viscosity - KV time stepping */
+  // gamma  = 0.3*dt;
+  // GetStableTimeStep(dt, gamma, &dt);
+  // PetscPrintf(PETSC_COMM_WORLD,"[Nico] New estimated dt: %1.4e\n",dt);
   /** */
+  
 
   dt = dt * 0.5;
   gamma  = 0.3*dt;
@@ -5072,10 +5122,10 @@ PetscErrorCode se2dr_demo(PetscInt mx,PetscInt my)
     /* Compute f = -F^{int}( u_{n+1} ) */
     switch (ModType){
       case KOSTROV:
-        ierr = AssembleLinearForm_ElastoDynamics_StressGlut2d(ctx,u,v,dt,time, gamma,f,k,of, blend_a_factor,blend_phio_factor);CHKERRQ(ierr);
+        ierr = AssembleLinearForm_ElastoDynamics_StressGlut2d(ctx,u,v,dt,time, gamma,f,k,of, blend_a_factor,blend_phio_factor,TauCorr);CHKERRQ(ierr);
         break;
       case TPV3:
-        ierr = AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(ctx,u,v,dt,time, gamma,f,k,of, blend_a_factor,blend_phio_factor);CHKERRQ(ierr);
+        ierr = AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(ctx,u,v,dt,time, gamma,f,k,of, blend_a_factor,blend_phio_factor,TauCorr);CHKERRQ(ierr);
         break;
     }
 

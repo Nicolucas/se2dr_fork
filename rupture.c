@@ -364,11 +364,15 @@ PetscErrorCode SDFSetup(SDF s,int dim,int type)
             // Tilted Fault
             case 1:
                 {
+                PetscReal angle = 0.0;
+
                 GeometryParams g;
                 ierr = GeoParamsCreate(&g);CHKERRQ(ierr);
 
                 printf("Tilted Fault ");
-                g->angle = CONST_FAULT_ANGLE_DEG;
+                ierr = PetscOptionsGetReal(NULL,NULL,"-angle",&angle,NULL);CHKERRQ(ierr);
+
+                g->angle = angle;
                 printf("(angle %f deg)\n",g->angle);
                 s->data = (void *) g;
                 printf("... Evaluated data (Tilting angle)\n");
