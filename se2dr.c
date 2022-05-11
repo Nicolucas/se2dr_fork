@@ -2991,7 +2991,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d(SpecFECtx c,Vec u,
               sigma_trial[TENS2D_XY] = -sigma_trial[TENS2D_XY];
             } 
             //printf("  sigma_xy %+1.8e\n",sigma_vec[TENS2D_XY]);
-            sigma_trial[TENS2D_YY] = sigma_n;
+
             dr_celldata[q].sliding = PETSC_TRUE;
           } else {
             slip_rate = 0.0;
@@ -3128,6 +3128,7 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
   ierr = VecZeroEntries(F);CHKERRQ(ierr);
 
   StressSnapshot = (3.05 > step*dt)&&(step*dt > 2.95)&&(step%of==0);
+  //StressSnapshot = (1.05 > step*dt)&&(step*dt > 0.95)&&(step%of==0);
   //StressSnapshot = (step%of==0);
   
   eldofs   = c->elbuf_dofs;
@@ -3438,8 +3439,6 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
 
         /* Resolve velocities at delta(+,-) onto fault */
         slip_rate = ( v_plus[0] - v_minus[0] ) * tangent[0] + ( v_plus[1] - v_minus[1] ) * tangent[1] ;	
-
-
         
         slip = dr_celldata[q].slip;
 
@@ -3473,7 +3472,6 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
           dr_celldata[q].mu = mu_friction;
           
           tau = -mu_friction * sigma_n;
-          
 
           if (tau < 0) {
             printf("-mu sigma_n < 0 error\n");
@@ -3488,11 +3486,10 @@ PetscErrorCode AssembleLinearForm_ElastoDynamics_StressGlut2d_tpv(SpecFECtx c,Ve
             //sigma_trial[TENS2D_XY] = tau ;  // No blending
 
             /**Antiparallel condition between slip rate and critical shear */
-            if ( sigma_t < 0.0) //slip_rate=v(+)-v(-) defined following Dalguer, sigma_t following  Ampuero's notes & treatment in fracture mechanics e.g. 
+            if ( sigma_t < 0.0)
             {
               sigma_trial[TENS2D_XY] = -sigma_trial[TENS2D_XY];
             } 
-            sigma_trial[TENS2D_YY] = sigma_n;
 
             dr_celldata[q].sliding = PETSC_TRUE;
             //printf("  sigma_xy %+1.8e\n",sigma_vec[TENS2D_XY]);
