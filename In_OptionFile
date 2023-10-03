@@ -1,3 +1,0 @@
-# Plot of the counter clockwise tilted (-90°) case of the self-similar crack problem, including
-# blending function definition within the se2dr.c file.
-./se2dr.app -nsteps 2000 -mx 400 -my 200 -dt 0.0005 -tmax 4.0 -bdegree 3 -delta_cell_factor 1.0001 -of 10
